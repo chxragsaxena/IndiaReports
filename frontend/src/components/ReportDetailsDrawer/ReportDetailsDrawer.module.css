@@ -1,0 +1,49 @@
+.drawer {
+    position: absolute;
+    top: 0;
+    right: -380px;
+    width: 360px;
+    height: 100%;
+    background: white;
+    box-shadow: -10px 0 25px rgba(0,0,0,.15);
+    transition: right .3s ease;
+    z-index: 1000;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.open {
+    right: 0;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.header h2 {
+    font-size: 22px;
+}
+
+.closeButton {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 22px;
+}
+
+.section {
+    margin-top: 20px;
+}
+
+.section h4 {
+    color: #2563eb;
+    margin-bottom: 8px;
+}
+
+.section p {
+    color: #475569;
+    line-height: 1.5;
+}

@@ -1,0 +1,53 @@
+.form {
+    display: flex;
+    flex-direction: column;
+    padding: 28px;
+    gap: 18px;
+}
+
+.form h2 {
+    margin: 0;
+    color: #1e3a8a;
+    font-size: 30px;
+    font-weight: 700;
+}
+
+.subtitle {
+    margin-top: -10px;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.textarea {
+    min-height: 120px;
+    resize: vertical;
+    padding: 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    font-size: 15px;
+    font-family: inherit;
+}
+
+.textarea:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.locationBox {
+    padding: 14px;
+    border-radius: 12px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 500;
+    border: 1px solid #bfdbfe;
+}
+
+.submitButton {
+    margin-top: 8px;
+}
