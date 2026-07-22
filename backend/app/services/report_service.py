@@ -125,7 +125,18 @@ class ReportService:
         Return clustered reports.
         """
 
-        grid_size = 0.5 / (2 ** max(0, zoom - 4))
+        if zoom <= 3:
+            grid_size = 2.0
+        elif zoom == 4:
+            grid_size = 1.2
+        elif zoom == 5:
+            grid_size = 0.7
+        elif zoom == 6:
+            grid_size = 0.35
+        elif zoom == 7:
+            grid_size = 0.18
+        else:
+            grid_size = 0.1
 
         query = (
     select(
