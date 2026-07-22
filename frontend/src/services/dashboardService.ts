@@ -1,3 +1,5 @@
+import { API_URL } from "../config/api";
+
 export interface DashboardData {
     total_reports: number;
     open_reports: number;
@@ -8,7 +10,7 @@ export interface DashboardData {
 
 export async function getDashboard(): Promise<DashboardData> {
     const response = await fetch(
-        "http://127.0.0.1:8000/api/v1/reports/dashboard"
+        `${API_URL}/api/v1/reports/dashboard`
     );
 
     if (!response.ok) {
