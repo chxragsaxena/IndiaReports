@@ -1,11 +1,13 @@
 import uuid
 
+from geoalchemy2 import Geometry
+
 from sqlalchemy import Float, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.models.enums import ReportCategory, ReportStatus
+from app.models.enums import ReportStatus
 from app.models.mixins import TimestampMixin
 
 
@@ -30,6 +32,15 @@ class Report(Base, TimestampMixin):
     latitude: Mapped[float] = mapped_column(Float)
 
     longitude: Mapped[float] = mapped_column(Float)
+
+    # NEW
+    geom = mapped_column(
+        Geometry(
+            geometry_type="POINT",
+            srid=4326,
+        ),
+        nullable=False,
+    )
 
     address: Mapped[str] = mapped_column(
         String(500),
