@@ -101,51 +101,51 @@ function Home() {
                         </option>
 
                         <option value="Road">
-                            🛣️ Road
+                            Road
                         </option>
 
                         <option value="Water Supply">
-                            🚰 Water Supply
+                            Water Supply
                         </option>
 
                         <option value="Electricity">
-                            ⚡ Electricity
+                            Electricity
                         </option>
 
                         <option value="Garbage">
-                            🗑️ Garbage
+                            Garbage
                         </option>
 
                         <option value="Drainage">
-                            💧 Drainage
+                            Drainage
                         </option>
 
                         <option value="Street Light">
-                            💡 Street Light
+                            Street Light
                         </option>
 
                         <option value="Traffic">
-                            🚦 Traffic
+                            Traffic
                         </option>
 
                         <option value="Public Transport">
-                            🚌 Public Transport
+                            Public Transport
                         </option>
 
                         <option value="Crime">
-                            🚓 Crime
+                            Crime
                         </option>
 
                         <option value="Medical">
-                            🚑 Medical
+                            Medical
                         </option>
 
                         <option value="Fire">
-                            🔥 Fire
+                            Fire
                         </option>
 
                         <option value="Other">
-                            📌 Other
+                            Other
                         </option>
                     </select>
                 </div>
