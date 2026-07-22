@@ -7,7 +7,7 @@ import {
 import MainLayout from "../components/Layout/MainLayout";
 
 import Home from "../pages/Home/Home";
-import ReportPage from "../pages/Report/Report";
+import ReportPage from "../pages/Report/ReportPage";
 import Dashboard from "../pages/Dashboard/Dashboard";
 
 function AppRouter() {
