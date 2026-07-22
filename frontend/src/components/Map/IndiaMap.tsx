@@ -66,8 +66,11 @@ function IndiaMap({
 
         const zoom = map.getZoom();
 
-        const reportsSource = map.getSource("reports");
-        const clustersSource = map.getSource("clusters");
+        const reportsSource =
+            map.getSource("reports") as GeoJSONSource;
+
+        const clustersSource =
+            map.getSource("clusters") as GeoJSONSource;
 
         if (!reportsSource || !clustersSource) {
             return;

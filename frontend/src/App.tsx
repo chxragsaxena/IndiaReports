@@ -1,7 +1,7 @@
-import IndiaMap from "./components/Map/IndiaMap";
+import AppRouter from "./router/AppRouter";
 
 function App() {
-    return <IndiaMap />;
+    return <AppRouter />;
 }
 
 export default App;
