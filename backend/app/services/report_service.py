@@ -37,6 +37,8 @@ class ReportService:
         max_lat: float | None = None,
         min_lng: float | None = None,
         max_lng: float | None = None,
+        status: str | None = None,
+        category: str | None = None,
     ):
 
         query = select(Report)
@@ -59,6 +61,16 @@ class ReportService:
                     ),
                 )
             )
+
+        if status:
+            query = query.where(
+                    Report.status == status
+                )
+
+        if category:
+            query = query.where(
+                    Report.category == category
+                )
 
         result = await db.execute(query)
 
@@ -106,6 +118,8 @@ class ReportService:
         min_lng: float,
         max_lng: float,
         zoom: int,
+        status: str | None = None,
+        category: str | None = None,
     ):
         """
         Return clustered reports.
@@ -114,27 +128,38 @@ class ReportService:
         grid_size = 0.5 / (2 ** max(0, zoom - 4))
 
         query = (
-            select(
-                func.avg(Report.latitude).label("latitude"),
-                func.avg(Report.longitude).label("longitude"),
-                func.count().label("count"),
+    select(
+        func.avg(Report.latitude).label("latitude"),
+        func.avg(Report.longitude).label("longitude"),
+        func.count().label("count"),
+    )
+    .where(
+        func.ST_Intersects(
+            Report.geom,
+            func.ST_MakeEnvelope(
+                min_lng,
+                min_lat,
+                max_lng,
+                max_lat,
+                4326,
+            ),
+        )
+    )
+)
+
+        if status:
+            query = query.where(
+                Report.status == status
             )
-            .where(
-                func.ST_Intersects(
-                    Report.geom,
-                    func.ST_MakeEnvelope(
-                        min_lng,
-                        min_lat,
-                        max_lng,
-                        max_lat,
-                        4326,
-                    ),
-                )
+
+        if category:
+            query = query.where(
+                Report.category == category
             )
-            .group_by(
-                func.floor(Report.latitude / grid_size),
-                func.floor(Report.longitude / grid_size),
-            )
+
+        query = query.group_by(
+            func.floor(Report.latitude / grid_size),
+            func.floor(Report.longitude / grid_size),
         )
 
         result = await db.execute(query)

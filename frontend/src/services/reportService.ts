@@ -13,7 +13,14 @@ interface ViewportParams {
     maxLng: number;
 }
 
-interface GetReportsParams extends Partial<ViewportParams> {}
+interface FilterParams {
+    status?: string;
+    category?: string;
+}
+
+interface GetReportsParams
+    extends Partial<ViewportParams>,
+        FilterParams {}
 
 export interface Cluster {
     latitude: number;
@@ -31,6 +38,8 @@ export async function getReports(
             max_lat: params?.maxLat,
             min_lng: params?.minLng,
             max_lng: params?.maxLng,
+            status: params?.status,
+            category: params?.category,
         },
     });
 
@@ -38,9 +47,10 @@ export async function getReports(
 }
 
 export async function getClusters(
-    params: ViewportParams & {
-        zoom: number;
-    }
+    params: ViewportParams &
+        FilterParams & {
+            zoom: number;
+        }
 ): Promise<Cluster[]> {
 
     const response = await api.get("/reports/clusters", {
@@ -50,6 +60,8 @@ export async function getClusters(
             min_lng: params.minLng,
             max_lng: params.maxLng,
             zoom: params.zoom,
+            status: params.status,
+            category: params.category,
         },
     });
 

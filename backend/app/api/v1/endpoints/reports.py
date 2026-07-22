@@ -39,6 +39,9 @@ async def get_reports(
 
     min_lng: Optional[float] = Query(default=None),
     max_lng: Optional[float] = Query(default=None),
+
+    status: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
 ):
     return await ReportService.get_reports(
         db=db,
@@ -46,6 +49,8 @@ async def get_reports(
         max_lat=max_lat,
         min_lng=min_lng,
         max_lng=max_lng,
+        status=status,
+        category=category,
     )
 
 
@@ -69,6 +74,8 @@ async def get_clusters(
     min_lng: float,
     max_lng: float,
     zoom: int,
+    status: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     
@@ -79,4 +86,6 @@ async def get_clusters(
         min_lng=min_lng,
         max_lng=max_lng,
         zoom=zoom,
+        status=status,
+        category=category,
     )

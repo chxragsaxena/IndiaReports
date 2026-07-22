@@ -9,11 +9,25 @@ import {
 } from "../../services/reportService";
 import { reportsToGeoJSON } from "../../utils/geojson";
 
-function IndiaMap() {
+interface IndiaMapProps {
+    statusFilter: string;
+    categoryFilter: string;
+}
+
+function IndiaMap({
+    statusFilter,
+    categoryFilter,
+}: IndiaMapProps) {
     const mapContainer = useRef<HTMLDivElement | null>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const lastViewportRef = useRef("");
     const timeoutRef = useRef<number | null>(null);
+    const statusFilterRef = useRef(statusFilter);
+    const categoryFilterRef = useRef(categoryFilter);
+    useEffect(() => {
+        statusFilterRef.current = statusFilter;
+        categoryFilterRef.current = categoryFilter;
+    }, [statusFilter, categoryFilter]);
 
     async function loadViewport(
     map: maplibregl.Map
@@ -40,6 +54,8 @@ function IndiaMap() {
             maxLat.toFixed(2),
             minLng.toFixed(2),
             maxLng.toFixed(2),
+            statusFilterRef.current,
+            categoryFilterRef.current,
         ].join(",");
 
         if (viewportKey === lastViewportRef.current) {
@@ -50,11 +66,12 @@ function IndiaMap() {
 
         const zoom = map.getZoom();
 
-        const reportsSource =
-            map.getSource("reports") as GeoJSONSource;
+        const reportsSource = map.getSource("reports");
+        const clustersSource = map.getSource("clusters");
 
-        const clustersSource =
-            map.getSource("clusters") as GeoJSONSource;
+        if (!reportsSource || !clustersSource) {
+            return;
+        }
 
         if (zoom < 8) {
 
@@ -64,6 +81,14 @@ function IndiaMap() {
                 minLng,
                 maxLng,
                 zoom: Math.floor(zoom),
+                status:
+                    statusFilterRef.current === "ALL"
+                        ? undefined
+                        : statusFilterRef.current,
+                category:
+                    categoryFilterRef.current === "ALL"
+                        ? undefined
+                        : categoryFilterRef.current,
             });
 
             const clusterGeoJson: FeatureCollection<Point, {count: number}> = {
@@ -97,6 +122,14 @@ function IndiaMap() {
                 maxLat,
                 minLng,
                 maxLng,
+                status:
+                    statusFilterRef.current === "ALL"
+                        ? undefined
+                        : statusFilterRef.current,
+                category:
+                    categoryFilterRef.current=== "ALL"
+                        ? undefined
+                        : categoryFilterRef.current,
             });
 
             reportsSource.setData(
@@ -365,6 +398,16 @@ function IndiaMap() {
         };
     }, []);
 
+    useEffect(() => {
+        if (!mapRef.current) {
+            return;
+        }
+
+        lastViewportRef.current = "";
+
+        void loadViewport(mapRef.current);
+    }, [statusFilter, categoryFilter]);
+ 
     return (
         <div
             ref={mapContainer}
