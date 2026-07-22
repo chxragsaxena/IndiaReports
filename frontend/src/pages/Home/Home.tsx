@@ -100,23 +100,51 @@ function Home() {
                             📂 All Categories
                         </option>
 
-                        <option value="POTHOLE">
-                            🛣️ Pothole
+                        <option value="Road">
+                            🛣️ Road
                         </option>
 
-                        <option value="GARBAGE">
+                        <option value="Water Supply">
+                            🚰 Water Supply
+                        </option>
+
+                        <option value="Electricity">
+                            ⚡ Electricity
+                        </option>
+
+                        <option value="Garbage">
                             🗑️ Garbage
                         </option>
 
-                        <option value="WATER_LOGGING">
-                            💧 Water Logging
+                        <option value="Drainage">
+                            💧 Drainage
                         </option>
 
-                        <option value="STREETLIGHT">
+                        <option value="Street Light">
                             💡 Street Light
                         </option>
 
-                        <option value="OTHER">
+                        <option value="Traffic">
+                            🚦 Traffic
+                        </option>
+
+                        <option value="Public Transport">
+                            🚌 Public Transport
+                        </option>
+
+                        <option value="Crime">
+                            🚓 Crime
+                        </option>
+
+                        <option value="Medical">
+                            🚑 Medical
+                        </option>
+
+                        <option value="Fire">
+                            🔥 Fire
+                        </option>
+
+                        <option value="Other">
                             📌 Other
                         </option>
                     </select>
