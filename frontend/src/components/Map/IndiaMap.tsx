@@ -33,7 +33,6 @@ function IndiaMap({
     map: maplibregl.Map
 ) {
     try {
-
         const bounds = map.getBounds();
 
         const south = bounds.getSouth();
@@ -66,18 +65,16 @@ function IndiaMap({
 
         const zoom = map.getZoom();
 
-        const reportsSource =
-            map.getSource("reports") as GeoJSONSource;
-
-        const clustersSource =
-            map.getSource("clusters") as GeoJSONSource;
-
+        const reportsSource = map.getSource("reports");
+        const clustersSource = map.getSource("clusters");
+       
         if (!reportsSource || !clustersSource) {
             return;
         }
 
+        const reportsGeoJson = reportsSource as GeoJSONSource;
+        const clustersGeoJson = clustersSource as GeoJSONSource;
         if (zoom < 8) {
-
             const clusters = await getClusters({
                 minLat,
                 maxLat,
@@ -111,15 +108,14 @@ function IndiaMap({
                 })),
             };
 
-            clustersSource.setData(clusterGeoJson);
+            clustersGeoJson.setData(clusterGeoJson);
 
-            reportsSource.setData({
+            reportsGeoJson.setData({
                 type: "FeatureCollection",
                 features: [],
             });
 
         } else {
-
             const reports = await getReports({
                 minLat,
                 maxLat,
@@ -135,11 +131,11 @@ function IndiaMap({
                         : categoryFilterRef.current,
             });
 
-            reportsSource.setData(
+            reportsGeoJson.setData(
                 reportsToGeoJSON(reports)
             );
 
-            clustersSource.setData({
+            clustersGeoJson.setData({
                 type: "FeatureCollection",
                 features: [],
             });
@@ -159,7 +155,6 @@ function IndiaMap({
         ) {
             return;
         }
-
         const map =
             new maplibregl.Map({
 
@@ -325,8 +320,6 @@ function IndiaMap({
                 });
 
             });
-
-            void loadViewport(map);
             map.on("click", "reports-layer", (e) => {
 
                 const feature = e.features?.[0];
@@ -382,7 +375,7 @@ function IndiaMap({
     map.on("mouseleave", "cluster-layer", () => {
         map.getCanvas().style.cursor = "";
     });
-
+    void loadViewport(map);
     });
 
         map.on("moveend", () => {
@@ -404,6 +397,12 @@ function IndiaMap({
     useEffect(() => {
         if (!mapRef.current) {
             return;
+        }
+        if (
+            !mapRef.current.getSource("reports") ||
+            !mapRef.current.getSource("clusters")
+        ) {
+        return;
         }
 
         lastViewportRef.current = "";
