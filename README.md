@@ -41,8 +41,8 @@ Seeding twice does not reset analytics; use `docker compose down -v` for a clean
 - **frontend (Vercel)**: `VITE_API_URL`, `VITE_NOTIFIER_URL`, `VITE_ANALYTICS_URL` (the last two optional), `VITE_MAP_STYLE`, `VITE_TELEGRAM_BOT`.
 
 ## Deploying (Render + Vercel)
-- Run `alembic upgrade head` on the report-service database. If that database predates these migrations and was not created by alembic,
-  run `alembic stamp e1e34496a6ba` first.
+- Make the Render Start Command `python -m scripts.migrate && uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The script migrates a new database,
+  upgrades a tracked one, and stamps an old untracked one before upgrading, so it is safe on every deploy.
 - One Render web service per backend service, plus a Render Key Value (Redis) instance. Free tiers sleep, so the first request after idle is slow.
 - Set `ADMIN_API_KEY` (and ideally a separate `ACK_SECRET`) to long random values.
 - `frontend/vercel.json` rewrites client routes so deep links such as `/ack?...` work.
