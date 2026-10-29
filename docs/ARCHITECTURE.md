@@ -73,7 +73,7 @@ payload (covered by a test) and redacts tokens from logs.
   created with `python -m scripts.create_admin` or `POST /api/v1/admin/users` by an existing admin).
 - The sign-in page's Citizen/Administrator tabs only choose which form to show. The server decides the role, and re-checks it on every request:
   the role and the `active` flag are read from the database (not trusted from the token), so demoting or disabling an admin takes effect at once.
-- Passwords are hashed with argon2id (off the event loop). Login does not reveal which emails exist (same error and same time for an unknown email),
+- Passwords are hashed with argon2id (off the event loop). Sign-in gives clear reasons (no account for this email / incorrect password / account disabled). This does reveal which emails have accounts, as sign-up already does, so scanning is limited by the per-IP rate limit below (a deliberate trade for clarity),
   and register/login are rate limited per IP (needs Redis; without it only the slow hash limits guessing).
 - Tokens are short-lived JWTs (default 8 h) sent as `Authorization: Bearer`, kept in `sessionStorage` (tab-scoped). No cookies, so no CSRF surface;
   the trade-off is that an XSS bug could read the token, which is why user text is never injected as HTML.

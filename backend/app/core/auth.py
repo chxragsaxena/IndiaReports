@@ -15,7 +15,6 @@ from app.db.session import get_db
 from app.models.user import User
 
 _hasher = PasswordHasher()  # argon2id with the library's recommended parameters
-_dummy_hash: str | None = None
 
 
 async def hash_password(password: str) -> str:
@@ -31,15 +30,6 @@ async def verify_password(password_hash: str, password: str) -> bool:
             return False
 
     return await asyncio.to_thread(check)
-
-
-async def burn_password_check(password: str) -> None:
-    """Spend the same time as a real check when the email is unknown, so response
-    time does not reveal which emails have accounts."""
-    global _dummy_hash
-    if _dummy_hash is None:
-        _dummy_hash = await hash_password("not-a-real-password")
-    await verify_password(_dummy_hash, password)
 
 
 def _secret() -> str:

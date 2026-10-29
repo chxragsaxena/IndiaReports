@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
-    burn_password_check,
     create_token,
     hash_password,
     require_user,
@@ -58,11 +57,15 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit_auth)])
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = (await db.execute(select(User).where(User.email == body.email.lower()))).scalar_one_or_none()
+    # Clear messages beat vague ones here: sign-up already reveals whether an email has
+    # an account, so hiding it on sign-in protected little and confused real people.
+    # Per-IP rate limiting (rate_limit_auth) is what limits scanning and guessing.
     if user is None:
-        await burn_password_check(body.password)
-        raise HTTPException(status_code=401, detail="Incorrect email or password.")
-    if not user.active or not await verify_password(user.password_hash, body.password):
-        raise HTTPException(status_code=401, detail="Incorrect email or password.")
+        raise HTTPException(status_code=404, detail="No account is linked to this email. Create an account to continue.")
+    if not user.active:
+        raise HTTPException(status_code=403, detail="This account has been disabled. Contact an administrator.")
+    if not await verify_password(user.password_hash, body.password):
+        raise HTTPException(status_code=401, detail="Incorrect password. Please try again.")
     return _token_response(user)
 
 

@@ -58,15 +58,37 @@ async def test_duplicate_email_and_weak_password_are_rejected(client):
     assert weak.status_code == 422
 
 
-async def test_login_and_wrong_credentials_look_identical(client):
+async def test_login_gives_a_clear_reason_when_it_fails(client):
     await register(client)
     ok = await client.post("/api/v1/auth/login", json={"email": "asha@example.org", "password": PASSWORD})
     assert ok.status_code == 200 and ok.json()["access_token"]
 
     wrong_pw = await client.post("/api/v1/auth/login", json={"email": "asha@example.org", "password": "nope-nope-nope"})
+    assert wrong_pw.status_code == 401
+    assert "password" in wrong_pw.json()["detail"].lower()
+
     unknown = await client.post("/api/v1/auth/login", json={"email": "ghost@example.org", "password": PASSWORD})
-    assert wrong_pw.status_code == unknown.status_code == 401
-    assert wrong_pw.json() == unknown.json()  # does not reveal which emails have accounts
+    assert unknown.status_code == 404
+    assert "no account" in unknown.json()["detail"].lower()
+    assert "create an account" in unknown.json()["detail"].lower()
+
+
+async def test_login_is_case_insensitive_on_email(client):
+    await register(client)
+    r = await client.post("/api/v1/auth/login", json={"email": "ASHA@Example.org", "password": PASSWORD})
+    assert r.status_code == 200
+
+
+async def test_disabled_account_gets_a_specific_message(client):
+    from sqlalchemy import text
+
+    from app.db.session import engine
+
+    await register(client)
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE users SET active = false"))
+    r = await client.post("/api/v1/auth/login", json={"email": "asha@example.org", "password": PASSWORD})
+    assert r.status_code == 403 and "disabled" in r.json()["detail"].lower()
 
 
 async def test_passwords_are_stored_hashed(client):
