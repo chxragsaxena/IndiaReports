@@ -54,7 +54,7 @@ docker compose run --rm --entrypoint python report-service -m scripts.create_adm
 ```
 Then sign in on the **Administrator** tab. Set `JWT_SECRET` to a long random value and `REQUIRE_LOGIN_TO_REPORT=true` in production.
 
-On a host with no shell (Render free tier), sign up on the site first, then run `python -m scripts.make_admin you@example.org` from the Start Command
+On a host with no shell (Render free tier), run `python -m scripts.make_admin you@example.org [new-password]` from the Start Command (creates or resets the account with that password; `python -m scripts.delete_user you@example.org` removes one)
 (before `uvicorn`) and restart.
 
 ## How reports are handled

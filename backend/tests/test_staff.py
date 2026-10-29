@@ -421,3 +421,52 @@ async def test_an_existing_officer_can_be_given_a_sign_in(client):
         "/api/v1/admin/officers/00000000-0000-0000-0000-000000000000/account", json={"email": "a@x.example"}, headers=ADMIN
     )
     assert missing.status_code == 404
+
+
+async def test_make_admin_can_create_or_reset_an_account_with_a_password(client):
+    from scripts.make_admin import promote
+
+    # No account yet: with a password it is created as an administrator who can sign in.
+    assert await promote("Owner@Example.org", "first-password-1") is True
+    login = await client.post("/api/v1/auth/login", json={"email": "owner@example.org", "password": "first-password-1"})
+    assert login.status_code == 200 and login.json()["user"]["role"] == "admin"
+    assert (await client.get("/api/v1/admin/reports", headers=bearer(login.json()["access_token"]))).status_code == 200
+
+    # An existing citizen whose password nobody knows: reset and promote in one step.
+    await register(client, email="lost@example.org", password="forgotten-password")
+    assert await promote("lost@example.org", "brand-new-password") is True
+    old = await client.post("/api/v1/auth/login", json={"email": "lost@example.org", "password": "forgotten-password"})
+    assert old.status_code == 401
+    new = await client.post("/api/v1/auth/login", json={"email": "lost@example.org", "password": "brand-new-password"})
+    assert new.status_code == 200 and new.json()["user"]["role"] == "admin"
+
+    # Without a password an unknown email is still a no-op, and a known one keeps its password.
+    assert await promote("nobody@example.org") is False
+    assert await promote("lost@example.org") is True
+    again = await client.post("/api/v1/auth/login", json={"email": "lost@example.org", "password": "brand-new-password"})
+    assert again.status_code == 200
+
+
+async def test_delete_user_removes_the_account_but_keeps_the_reports(client):
+    from scripts.delete_user import remove
+
+    area = await make_area(client, "Andheri ward", ANDHERI)
+    await add_officer(client, "Asha", "asha@city.example", area)
+    citizen = await register(client, email="gone@example.org")
+    report = await citizen_report(client, citizen["access_token"])
+    await register(client, email="stays@example.org")
+
+    assert await remove("Gone@Example.org") is True
+    assert await remove("gone@example.org") is False  # nothing left to delete
+
+    login = await client.post("/api/v1/auth/login", json={"email": "gone@example.org", "password": PASSWORD})
+    assert login.status_code == 404  # no account is linked to this email
+    # The old token stops working, and the report is still there for everyone else.
+    assert (await client.get("/api/v1/auth/me", headers=bearer(citizen["access_token"]))).status_code == 401
+    assert (await client.get(f"/api/v1/reports/{report['id']}")).status_code == 200
+    assert (await client.post("/api/v1/auth/login", json={"email": "stays@example.org", "password": PASSWORD})).status_code == 200
+
+    # Deleting an officer's account leaves the officer record, just without a sign-in.
+    assert await remove("asha@city.example") is True
+    officers = (await client.get("/api/v1/admin/officers", headers=ADMIN)).json()
+    assert [o["name"] for o in officers] == ["Asha"] and officers[0]["email"] is None
