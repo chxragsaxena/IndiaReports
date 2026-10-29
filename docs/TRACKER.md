@@ -120,8 +120,20 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   and returns schema-valid findings in about a second: garbage photo under the wrong category was caught, hostile text in a report did not change the rating (one trial, not a guarantee),
   a real pothole road photo rated High at 95% and produced the admin alert. Default is now qwen/qwen3.8-27b. Accuracy still unmeasured on a real labelled set.
 
+- Merged to `main` and deployed (2026-10-29). Render builds from `main` with root directory `backend`, so only changes under `backend/` trigger a deploy
+  (docs, frontend and Go changes do not). Render runs Python 3.14, so every pinned package needs a 3.14 wheel:
+  orjson and Pillow had none and the build failed compiling Rust; Pillow was bumped and orjson was dropped (cached responses use the standard `json`). Commits 72a14b1, f94327d.
+  Render had also built a stale commit until a manual redeploy; check the commit shown on the service matches `main`.
+- Map resilience (ff5fee3): the live frontend was talking to an older backend with no `/pins` route and a free-tier server that sleeps ~50 s. The map now falls back to the
+  list endpoint on 404, waits up to 60 s, retries, and shows loading/error banners instead of a blank map.
+- Live state after the deploy: new code is running but the Render database had NOT been migrated, so `/reports/dashboard` and `/reports/clusters` returned 500 (no `report_cells` table).
+  Fix: `backend/scripts/migrate.py`, run from the Start Command before uvicorn. It handles a new database, a tracked one, and an old database never recorded by alembic
+  (stamps it at e1e34496a6ba first), and is safe to run on every start. Tested against all three states and run twice.
+  Render Start Command: `python -m scripts.migrate && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
 ## Still open (owner decisions / not done)
-- Render/Vercel/Redis setup and env vars (see root README). Merge `microservices` into `main` only after the deploy is configured:
-  the Render root dir for the backend is unchanged (`backend/`), but the database needs `alembic upgrade head` (and possibly `alembic stamp` first).
+- Render env vars still to set: `JWT_SECRET` (long random string; without it the admin key signs tokens), `CORS_ORIGINS` (the Vercel URL), then create the first admin
+  (`POST /api/v1/admin/users` with `X-API-Key`). Photos/AI on Render need `S3_*` storage settings and `GROQ_API_KEY`; Redis is not configured there (caching falls back to per-process).
+- The Go notifier and analytics services are not deployed on Render; the live site uses report-service only (live updates and Insights-from-analytics need those two).
 - Google address search on the report form was discussed, not built (terms of use for Places/Geocoding with a non-Google map must be checked first).
 - Not built: multi-machine test, PgBouncer in compose, Telegram fan-out beyond one bot, admin UI for areas/officers (API only).
