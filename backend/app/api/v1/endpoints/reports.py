@@ -1,13 +1,16 @@
 from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import rate_limit_writes
+from app.core.security import require_admin
 from app.db.session import get_db
 from app.schemas.cluster import ClusterResponse
-from app.services.report_service import ReportService
 from app.schemas.dashboard import DashboardResponse
-from app.schemas.report import ReportCreate, ReportResponse
+from app.schemas.report import ReportCreate, ReportResponse, ReportStatusUpdate
+from app.services.report_service import ReportService
 
 router = APIRouter()
 
@@ -16,6 +19,7 @@ router = APIRouter()
     "/",
     response_model=ReportResponse,
     status_code=201,
+    dependencies=[Depends(rate_limit_writes)],
 )
 async def create_report(
     report: ReportCreate,
@@ -42,6 +46,7 @@ async def get_reports(
 
     status: Optional[str] = Query(default=None),
     category: Optional[str] = Query(default=None),
+    limit: Optional[int] = Query(default=None, ge=1, le=1000),
 ):
     return await ReportService.get_reports(
         db=db,
@@ -51,6 +56,7 @@ async def get_reports(
         max_lng=max_lng,
         status=status,
         category=category,
+        limit=limit,
     )
 
 
@@ -78,7 +84,6 @@ async def get_clusters(
     category: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    
     return await ReportService.get_clusters(
         db=db,
         min_lat=min_lat,
@@ -89,3 +94,33 @@ async def get_clusters(
         status=status,
         category=category,
     )
+
+
+@router.get(
+    "/{report_id}",
+    response_model=ReportResponse,
+)
+async def get_report(
+    report_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    report = await ReportService.get_report(db, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    return report
+
+
+@router.patch(
+    "/{report_id}/status",
+    response_model=ReportResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def update_report_status(
+    report_id: UUID,
+    body: ReportStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    report = await ReportService.update_status(db, report_id, body.status)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    return report
