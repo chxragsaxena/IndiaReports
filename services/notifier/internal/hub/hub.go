@@ -125,7 +125,8 @@ func (h *Hub) Broadcast(ev events.Event) {
 		return
 	}
 
-	payload, err := json.Marshal(reportMessage{Type: "report", Event: ev.Type, Data: ev})
+	// Everything sent here reaches arbitrary viewers: never include private fields.
+	payload, err := json.Marshal(reportMessage{Type: "report", Event: ev.Type, Data: ev.Public()})
 	if err != nil {
 		return
 	}

@@ -23,12 +23,11 @@ def _iso(value: datetime | None) -> str | None:
     return value.astimezone(timezone.utc).isoformat() if value else None
 
 
-def report_created_payload(report: Report) -> dict:
+def _base(report: Report) -> dict:
     return {
         "report_id": str(report.id),
         "title": report.title,
         "category": report.category,
-        "status": report.status,
         "latitude": report.latitude,
         "longitude": report.longitude,
         "city": report.city,
@@ -38,20 +37,29 @@ def report_created_payload(report: Report) -> dict:
     }
 
 
+def report_created_payload(report: Report, recipient: dict | None = None) -> dict:
+    payload = _base(report) | {"status": report.status}
+    if recipient:
+        payload["recipient"] = recipient
+    return payload
+
+
 def status_changed_payload(report: Report, old_status: str, changed_at: datetime) -> dict:
-    return {
-        "report_id": str(report.id),
-        "title": report.title,
-        "category": report.category,
+    return _base(report) | {
         "old_status": old_status,
         "new_status": report.status,
-        "latitude": report.latitude,
-        "longitude": report.longitude,
-        "city": report.city,
-        "state": report.state,
-        "pincode": report.pincode,
-        "created_at": _iso(report.created_at),
         "changed_at": _iso(changed_at),
+    }
+
+
+def escalated_payload(
+    report: Report, recipient: dict, previous_assignee: str, unacknowledged_seconds: float
+) -> dict:
+    return _base(report) | {
+        "status": report.status,
+        "recipient": recipient,
+        "previous_assignee": previous_assignee,
+        "unacknowledged_hours": round(unacknowledged_seconds / 3600, 1),
     }
 
 

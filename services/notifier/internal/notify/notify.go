@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -32,8 +33,12 @@ var ErrPermanent = errors.New("permanent delivery failure")
 // LogSender is used when no Telegram token is configured: the message is logged only.
 type LogSender struct{ Log *slog.Logger }
 
+var tokenInURL = regexp.MustCompile(`token=[0-9A-Za-z_-]+`)
+
 func (l LogSender) Send(_ context.Context, chatID, text string) error {
-	l.Log.Info("notification (no telegram token configured)", "chat_id", chatID, "text", text)
+	// Acknowledge links carry a bearer token: keep it out of the logs.
+	l.Log.Info("notification (no telegram token configured)",
+		"chat_id", chatID, "text", tokenInURL.ReplaceAllString(text, "token=<redacted>"))
 	return nil
 }
 
@@ -108,6 +113,27 @@ func Message(ev events.Event, appURL string) string {
 	return b.String()
 }
 
+// DirectMessage is what the responsible officer (or the admin, on escalation) receives.
+// It carries the signed acknowledge link, so it must only ever be sent to that person.
+func DirectMessage(ev events.Event, appURL string) string {
+	where := strings.Trim(strings.Join([]string{ev.City, ev.State}, ", "), ", ")
+	ack := ""
+	if ev.Recipient != nil && ev.Recipient.AckToken != "" {
+		ack = fmt.Sprintf("\nAcknowledge: %s/ack?report=%s&token=%s",
+			strings.TrimRight(appURL, "/"), ev.ReportID, ev.Recipient.AckToken)
+	}
+
+	if ev.Type == events.TypeReportEscalated {
+		prev := ev.PreviousAssignee
+		if prev == "" {
+			prev = "the assigned officer"
+		}
+		return fmt.Sprintf("ESCALATED to you: %s report in %s has had no acknowledgement from %s for %.0f hours.\n%s%s",
+			ev.Category, where, prev, ev.UnackHours, ev.Title, ack)
+	}
+	return fmt.Sprintf("Assigned to you: new %s report in %s\n%s%s", ev.Category, where, ev.Title, ack)
+}
+
 // Dispatcher matches events to subscriptions and sends through a bounded worker pool.
 type Dispatcher struct {
 	store   *store.Store
@@ -126,6 +152,58 @@ func NewDispatcher(s *store.Store, sender Sender, log *slog.Logger, appURL strin
 // error means the entry should be retried later (already-sent subscribers are
 // skipped on the retry via ClaimDelivery).
 func (d *Dispatcher) Handle(ctx context.Context, ev events.Event) error {
+	// Both paths always run; errors.Join keeps the entry pending if either failed.
+	directErr := d.deliverDirect(ctx, ev)
+	subsErr := d.notifySubscribers(ctx, ev)
+	return errors.Join(directErr, subsErr)
+}
+
+// deliverDirect messages the named person responsible for the report: the area's
+// officer on creation, or the admin when it was escalated.
+func (d *Dispatcher) deliverDirect(ctx context.Context, ev events.Event) error {
+	if ev.Recipient == nil || ev.Recipient.ChatID == "" {
+		return nil
+	}
+	if ev.Type != events.TypeReportCreated && ev.Type != events.TypeReportEscalated {
+		return nil
+	}
+	chatID := ev.Recipient.ChatID
+
+	sent, err := d.store.ClaimDirect(ctx, ev.EventID, chatID)
+	if err != nil {
+		return err
+	}
+	if sent {
+		return nil // idempotent on redelivery
+	}
+
+	sendErr := d.sendWithRetry(ctx, chatID, DirectMessage(ev, d.appURL))
+	switch {
+	case sendErr == nil:
+		return d.store.MarkDirect(ctx, ev.EventID, chatID, "sent", "")
+	case errors.Is(sendErr, ErrPermanent):
+		d.log.Warn("cannot reach responsible officer", "report", ev.ReportID, "role", ev.Recipient.Role, "err", sendErr)
+		_ = d.store.MarkDirect(ctx, ev.EventID, chatID, "failed", sendErr.Error())
+		return nil
+	default:
+		_ = d.store.MarkDirect(ctx, ev.EventID, chatID, "retry", sendErr.Error())
+		return sendErr
+	}
+}
+
+func (d *Dispatcher) sendWithRetry(ctx context.Context, chatID, text string) error {
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		err = d.sender.Send(ctx, chatID, text)
+		if err == nil || errors.Is(err, ErrPermanent) || ctx.Err() != nil {
+			return err
+		}
+		time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+	}
+	return err
+}
+
+func (d *Dispatcher) notifySubscribers(ctx context.Context, ev events.Event) error {
 	subs, err := d.store.Match(ctx, ev)
 	if err != nil {
 		return fmt.Errorf("match subscriptions: %w", err)
@@ -174,14 +252,7 @@ func (d *Dispatcher) deliver(ctx context.Context, sub store.Subscription, ev eve
 		return nil // idempotent: a redelivered event never sends twice
 	}
 
-	var sendErr error
-	for attempt := 1; attempt <= 3; attempt++ {
-		sendErr = d.sender.Send(ctx, sub.ChatID, text)
-		if sendErr == nil || errors.Is(sendErr, ErrPermanent) || ctx.Err() != nil {
-			break
-		}
-		time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
-	}
+	sendErr := d.sendWithRetry(ctx, sub.ChatID, text)
 
 	switch {
 	case sendErr == nil:

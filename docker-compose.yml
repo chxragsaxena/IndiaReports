@@ -37,6 +37,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/reports_db
       REDIS_URL: redis://redis:6379/0
       ADMIN_API_KEY: dev-admin-key
+      ESCALATION_AFTER_SECONDS: ${ESCALATION_AFTER_SECONDS:-604800}
+      ESCALATION_CHECK_SECONDS: ${ESCALATION_CHECK_SECONDS:-60}
     ports:
       - "${REPORT_PORT:-8000}:8000"
     depends_on:

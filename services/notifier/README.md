@@ -45,3 +45,8 @@ At-least-once from the stream, made effectively-once per subscriber by a unique 
 
 ## Tests
 `go test -race ./...` (unit) and, against a running stack, `go test -tags integration ./integration/` (see the file header).
+
+## Direct messages (area officer / escalation)
+Events may carry a `recipient` (the responsible officer, or the admin on `ReportEscalated`). The notifier sends that person a direct
+message containing the acknowledge link, idempotently per `(event_id, chat_id)` in `direct_deliveries`. Recipient details are never
+forwarded over the WebSocket.

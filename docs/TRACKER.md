@@ -19,7 +19,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 2 | report-service: status PATCH, SQL dashboard, indexes, outbox + event publishing, caching, rate limit | [x] |
 | 3 | notifier (Go): stream consumer, WebSocket hub (geo-tiled), subscriptions, Telegram | [x] |
 | 4 | analytics (Go): rollup consumer, hotspots + SLA endpoints | [x] |
-| 4b | Area polygons + officer assignment (PostGIS ST_Contains), acknowledge link, 7-day escalation to admin, notifier direct messages | [ ] |
+| 4b | Area polygons + officer assignment (PostGIS ST_Contains), acknowledge link, 7-day escalation to admin, notifier direct messages | [x] |
 | 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, XSS fix | [ ] |
 | 6 | End-to-end verification, load test, README, deploy notes | [ ] |
 
@@ -65,3 +65,11 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   generated events; repeat requests hit the in-process cache. Rollup updates are idempotent (processed_events in the same transaction).
 - New requirement from owner (2026-10-29): notify the officer responsible for the polygon/area a report falls in; if not acknowledged
   within 7 days, escalate to the main admin. Tracked as stage 4b below. The core backend stays Python/FastAPI (report-service owns PostGIS).
+- Stage 4b done (area officers + escalation). Backend: 22 tests pass (20 + 2 Redis-only skipped when Redis unset). Go: unit tests pass with `-race`.
+  Live-stack integration: report in a ward polygon -> officer alerted -> no acknowledgement -> (5 s test window) admin alerted with a new token.
+  - Added: `areas`/`officers` tables, `/api/v1/admin/areas|officers` (X-API-Key), `POST /reports/{id}/acknowledge` (signed token),
+    escalation loop, `ReportEscalated` event, notifier direct messages, `scripts/seed_areas.py` (10 city jurisdictions + admin).
+  - Security checks: public WebSocket payload never contains recipient chat id / token (unit + integration test); tokens redacted in logs.
+  - Owner action: set `ACK_SECRET` (or `ADMIN_API_KEY`) in production; set `ADMIN_CHAT_ID`/`OFFICER_CHAT_ID` before running seed_areas to receive real alerts.
+  - Frontend TODO (stage 5): `/ack?report=&token=` page that POSTs to the acknowledge endpoint.
+  - Known limit: escalation is one level (officer -> admin) and happens once; the admin is not escalated further.

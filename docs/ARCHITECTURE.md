@@ -42,3 +42,19 @@ Be clear about what is designed in versus what has been verified. The design bel
 ## Failure behaviour
 - Redis down: report-service keeps accepting and serving reports (events wait in the outbox).
 - notifier or analytics down: nothing user-facing breaks except live pins/stats; they catch up from the stream when they return.
+
+## Accountability: area officers and escalation
+Every report is routed to a named person, and silence is not allowed to hide a problem.
+
+1. **Areas** are PostGIS `MULTIPOLYGON`s (GiST-indexed); each **officer** belongs to one area. There is exactly one active **main admin**.
+2. **Assignment** happens in the same transaction as the report insert: the officer of the *smallest* area that `ST_Contains` the point
+   wins (a ward officer beats a district officer). If no area matches, the admin is assigned.
+3. The `ReportCreated` event carries the recipient. The notifier messages that person directly with a **signed acknowledge link**
+   (HMAC over report id + officer id, no login needed). Re-assigning a report invalidates the previous person's link.
+4. **Acknowledging** (via the link, or an admin moving the status past OPEN) stamps `acknowledged_at` and moves OPEN to IN_PROGRESS.
+5. **Escalation**: a background job in report-service finds reports that are OPEN, unacknowledged and older than
+   `ESCALATION_AFTER_SECONDS` (default 7 days), reassigns them to the admin and emits `ReportEscalated`. It runs on every instance
+   safely (`FOR UPDATE SKIP LOCKED`), escalates each report at most once, and a partial index keeps the lookup tiny at any table size.
+
+Security: the recipient's chat id and token travel only on the internal stream. The notifier strips them from every WebSocket
+payload (covered by a test) and redacts tokens from logs.

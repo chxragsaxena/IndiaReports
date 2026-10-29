@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.rate_limit import rate_limit_writes
 from app.core.security import require_admin
 from app.db.session import get_db
+from app.schemas.admin import AcknowledgeRequest
 from app.schemas.cluster import ClusterResponse
 from app.schemas.dashboard import DashboardResponse
 from app.schemas.report import ReportCreate, ReportResponse, ReportStatusUpdate
+from app.services import assignment_service
 from app.services.report_service import ReportService
 
 router = APIRouter()
@@ -108,6 +110,23 @@ async def get_report(
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found.")
     return report
+
+
+@router.post(
+    "/{report_id}/acknowledge",
+    response_model=ReportResponse,
+)
+async def acknowledge_report(
+    report_id: UUID,
+    body: AcknowledgeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Called from the signed link in the officer's alert. No login: the token proves
+    the caller received the alert for this report."""
+    try:
+        return await assignment_service.acknowledge(db, report_id, body.token)
+    except assignment_service.AckError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
 @router.patch(

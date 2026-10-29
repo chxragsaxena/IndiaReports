@@ -31,6 +31,31 @@ type Event struct {
 	Longitude float64 `json:"longitude"`
 	CreatedAt string  `json:"created_at,omitempty"`
 	ChangedAt string  `json:"changed_at,omitempty"`
+
+	// Direct recipient (the responsible officer, or the admin on escalation).
+	// Private: never forward these fields to WebSocket clients; use Public().
+	Recipient        *Recipient `json:"recipient,omitempty"`
+	PreviousAssignee string     `json:"previous_assignee,omitempty"`
+	UnackHours       float64    `json:"unacknowledged_hours,omitempty"`
+}
+
+// Recipient is who must act on a report. AckToken is a bearer secret for the
+// acknowledge link, so it is as sensitive as the chat id.
+type Recipient struct {
+	OfficerID string `json:"officer_id"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+	ChatID    string `json:"chat_id"`
+	AckToken  string `json:"ack_token"`
+}
+
+const TypeReportEscalated = "ReportEscalated"
+
+// Public returns a copy that is safe to show to any map viewer.
+func (e Event) Public() Event {
+	e.Recipient = nil
+	e.PreviousAssignee = ""
+	return e
 }
 
 // Parse decodes the field map of a Redis stream entry.

@@ -16,6 +16,7 @@ from app.events.outbox import (
 from app.models.enums import ReportStatus
 from app.models.report import Report
 from app.schemas.report import ReportCreate, ReportResponse
+from app.services.assignment_service import find_assignee, recipient_for
 
 
 def _grid_size_for_zoom(zoom: int) -> float:
@@ -60,7 +61,16 @@ class ReportService:
         # then write the event in the SAME transaction as the report.
         await db.flush()
         await db.refresh(db_report)
-        add_event(db, "ReportCreated", report_created_payload(db_report))
+
+        # Route to the officer whose area contains the point (admin if none does).
+        recipient = None
+        assignee = await find_assignee(db, report.latitude, report.longitude)
+        if assignee is not None:
+            db_report.assigned_officer_id = assignee.id
+            db_report.assigned_at = datetime.now(timezone.utc)
+            recipient = recipient_for(db_report, assignee)
+
+        add_event(db, "ReportCreated", report_created_payload(db_report, recipient))
 
         await db.commit()
         await db.refresh(db_report)
@@ -90,6 +100,8 @@ class ReportService:
 
         report.status = new_status.value
         changed_at = datetime.now(timezone.utc)
+        if report.acknowledged_at is None and new_status != ReportStatus.OPEN:
+            report.acknowledged_at = changed_at  # someone acted on it: nothing to escalate
         add_event(db, "ReportStatusChanged", status_changed_payload(report, old_status, changed_at))
 
         await db.commit()

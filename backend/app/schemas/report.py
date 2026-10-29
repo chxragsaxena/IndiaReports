@@ -49,6 +49,11 @@ class ReportResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    # Accountability trail (officer identity and contact details are not exposed).
+    assigned_at: datetime | None = None
+    acknowledged_at: datetime | None = None
+    escalated_at: datetime | None = None
+
     model_config = ConfigDict(
         from_attributes=True
     )

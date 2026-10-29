@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     # Required to change a report's status. When unset, the endpoint is disabled.
     ADMIN_API_KEY: str | None = None
 
+    # Signs the acknowledge links sent to officers. Falls back to ADMIN_API_KEY.
+    ACK_SECRET: str | None = None
+
+    # A report left unacknowledged this long is escalated to the main admin (7 days).
+    ESCALATION_AFTER_SECONDS: int = 7 * 24 * 3600
+    ESCALATION_CHECK_SECONDS: int = 60
+
     CORS_ORIGINS: str = "*"
 
     DB_POOL_SIZE: int = 10

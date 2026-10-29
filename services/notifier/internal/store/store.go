@@ -100,6 +100,18 @@ CREATE TABLE IF NOT EXISTS deliveries (
     PRIMARY KEY (subscription_id, event_id)
 );
 CREATE INDEX IF NOT EXISTS ix_deliveries_updated ON deliveries (updated_at);
+
+-- Direct messages to a named person (assigned officer, escalated admin), not tied to a subscription.
+CREATE TABLE IF NOT EXISTS direct_deliveries (
+    event_id   text NOT NULL,
+    chat_id    text NOT NULL,
+    status     text NOT NULL DEFAULT 'pending',
+    attempts   int  NOT NULL DEFAULT 0,
+    error      text,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (event_id, chat_id)
+);
+CREATE INDEX IF NOT EXISTS ix_direct_deliveries_updated ON direct_deliveries (updated_at);
 `
 
 // migrate runs under an advisory lock so several instances starting together are safe.
@@ -235,12 +247,46 @@ func (s *Store) MarkDelivery(ctx context.Context, subID, eventID, status, errMsg
 	return err
 }
 
-// PruneDeliveries keeps the deliveries table bounded.
+// ClaimDirect is ClaimDelivery for direct (non-subscription) messages.
+func (s *Store) ClaimDirect(ctx context.Context, eventID, chatID string) (alreadySent bool, err error) {
+	var status string
+	err = s.pool.QueryRow(ctx, `
+		INSERT INTO direct_deliveries (event_id, chat_id, attempts) VALUES ($1,$2,1)
+		ON CONFLICT (event_id, chat_id)
+		DO UPDATE SET attempts = direct_deliveries.attempts + 1, updated_at = now()
+		RETURNING status`, eventID, chatID).Scan(&status)
+	return status == "sent", err
+}
+
+func (s *Store) MarkDirect(ctx context.Context, eventID, chatID, status, errMsg string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE direct_deliveries SET status=$3, error=NULLIF($4,''), updated_at=now()
+		WHERE event_id=$1 AND chat_id=$2`, eventID, chatID, status, errMsg)
+	return err
+}
+
+// PruneDeliveries keeps the delivery tables bounded.
 func (s *Store) PruneDeliveries(ctx context.Context, olderThan time.Duration) (int64, error) {
 	tag, err := s.pool.Exec(ctx,
 		"DELETE FROM deliveries WHERE updated_at < now() - make_interval(secs => $1)", olderThan.Seconds())
 	if err != nil {
 		return 0, err
 	}
-	return tag.RowsAffected(), nil
+	n := tag.RowsAffected()
+	tag, err = s.pool.Exec(ctx,
+		"DELETE FROM direct_deliveries WHERE updated_at < now() - make_interval(secs => $1)", olderThan.Seconds())
+	if err != nil {
+		return n, err
+	}
+	return n + tag.RowsAffected(), nil
+}
+
+// DirectDeliveryStatus is used by tests and diagnostics.
+func (s *Store) DirectDeliveryStatus(ctx context.Context, eventID, chatID string) (string, int, error) {
+	var status string
+	var attempts int
+	err := s.pool.QueryRow(ctx,
+		"SELECT status, attempts FROM direct_deliveries WHERE event_id=$1 AND chat_id=$2", eventID, chatID,
+	).Scan(&status, &attempts)
+	return status, attempts, err
 }

@@ -2,7 +2,9 @@ import uuid
 
 from geoalchemy2 import Geometry
 
-from sqlalchemy import Float, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -76,4 +78,23 @@ class Report(Base, TimestampMixin):
         String(20),
         default=ReportStatus.OPEN.value,
         nullable=False,
+    )
+
+    # Accountability: who is responsible, whether they acted, and whether it escalated.
+    assigned_officer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("officers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    assigned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    escalated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

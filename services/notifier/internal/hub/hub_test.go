@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/chxragsaxena/indiareports/notifier/internal/events"
@@ -58,6 +59,25 @@ func TestBroadcastRoutesByViewportAndZoom(t *testing.T) {
 	}
 	if len(indiaWide.send) != 0 {
 		t.Fatalf("refresh hints were not throttled: %d queued", len(indiaWide.send))
+	}
+}
+
+func TestBroadcastNeverLeaksRecipientSecrets(t *testing.T) {
+	h := New(10)
+	c := newTestClient(h)
+	h.setViewport(c, BBox{MinLat: 28, MinLng: 76, MaxLat: 29, MaxLng: 78}, 11)
+
+	h.Broadcast(events.Event{
+		Type: events.TypeReportCreated, ReportID: "r1", Latitude: 28.6, Longitude: 77.2,
+		PreviousAssignee: "Asha Rao",
+		Recipient:        &events.Recipient{Name: "Asha Rao", ChatID: "123456789", AckToken: "s3cr3t-token-value"},
+	})
+
+	msg := string(<-c.send)
+	for _, secret := range []string{"123456789", "s3cr3t-token-value", "Asha Rao", "ack_token", "chat_id"} {
+		if strings.Contains(msg, secret) {
+			t.Fatalf("websocket payload leaked %q: %s", secret, msg)
+		}
 	}
 }
 

@@ -9,18 +9,22 @@ from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.redis import close_redis, get_redis
 from app.db.session import engine
+from app.events.escalation import run_escalation
 from app.events.outbox import run_relay
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     stop = asyncio.Event()
-    relay_task = asyncio.create_task(run_relay(stop))
+    tasks = [
+        asyncio.create_task(run_relay(stop)),
+        asyncio.create_task(run_escalation(stop)),
+    ]
     try:
         yield
     finally:
         stop.set()
-        await relay_task
+        await asyncio.gather(*tasks)
         await close_redis()
         await engine.dispose()
 
