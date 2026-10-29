@@ -116,6 +116,9 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   strict JSON schema, finish_reason checks, 429 handling (Retry-After, 30 s cap, 2 retries, injectable sleep). 94 backend tests pass. NOT yet run against live Groq (needs the key).
   Default Groq model is meta-llama/llama-4-scout-17b-16e-instruct (vision-capable per Groq docs seen via secondary sources); PullWise gpt-oss-120b is text-only.
   Privacy note recorded: with Groq, photos leave our infrastructure.
+  VERIFIED LIVE (2026-10-29): the first default (Llama 4 Scout) no longer exists on Groq; the key lists gpt-oss (text-only), Whisper, TTS and qwen/qwen3.8-27b. The Qwen model accepts images
+  and returns schema-valid findings in about a second: garbage photo under the wrong category was caught, hostile text in a report did not change the rating (one trial, not a guarantee),
+  a real pothole road photo rated High at 95% and produced the admin alert. Default is now qwen/qwen3.8-27b. Accuracy still unmeasured on a real labelled set.
 
 ## Still open (owner decisions / not done)
 - Render/Vercel/Redis setup and env vars (see root README). Merge `microservices` into `main` only after the deploy is configured:

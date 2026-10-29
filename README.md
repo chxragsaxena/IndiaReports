@@ -65,14 +65,14 @@ Copy `.env.example` to `.env` to see every setting.
 | | Groq (hosted) | Your own server (Ollama, vLLM, llama.cpp) |
 |---|---|---|
 | Setup | Set `GROQ_API_KEY` (free key at console.groq.com/keys, the same one PullWise uses) | Set `ANALYSIS_BASE_URL` (and `ANALYSIS_MODEL`) |
-| Default model | `meta-llama/llama-4-scout-17b-16e-instruct`, an open-weight Llama 4 that accepts images | `qwen3-vl:4b` (Qwen3-VL is among the strongest open vision families) |
+| Default model | `qwen/qwen3.8-27b`, an open-weight Qwen that accepts images (checked live) | `qwen3-vl:4b` (Qwen3-VL is among the strongest open vision families) |
 | Hardware | none; answers in seconds | a laptop can run a small one slowly; a GPU server gives real quality |
 | **Where photos go** | **to Groq's servers** | **stay on your infrastructure** |
 
 **Privacy: with Groq, citizens' photos leave your infrastructure.** Check Groq's data terms for the plan you use, and tell your users. If photos must stay with you, use your own server.
 Remove people and number plates where you can; the model is also asked to flag them.
 
-**The model must be able to read images.** Text-only models, including `openai/gpt-oss-120b` (PullWise's default) and `llama3`, cannot analyse photos.
+**The model must be able to read images.** Text-only models, including `openai/gpt-oss-120b` (PullWise default) and `llama3`, cannot analyse photos. Hosted catalogues change (Llama 4 Scout, the first default here, vanished from Groq): list what your key can use with `GET https://api.groq.com/openai/v1/models`.
 Override with `ANALYSIS_MODEL` if Groq or your server offers a better vision model; exact names change over time, so check the provider's model list.
 
 Local Ollama example, using the bundled container (a multi-GB download, and Docker needs several GB of RAM):

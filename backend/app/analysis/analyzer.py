@@ -30,8 +30,10 @@ from app.models.enums import ReportCategory
 logger = logging.getLogger(__name__)
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-# An open-weight Llama 4 model that accepts images (text-only models such as gpt-oss cannot).
-GROQ_DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+# An open-weight Qwen model that accepts images; checked against live Groq on 2026-10-29. Groq's catalogue
+# changes (an earlier default, Llama 4 Scout, disappeared), and text-only models such as gpt-oss
+# cannot analyse photos.
+GROQ_DEFAULT_MODEL = "qwen/qwen3.8-27b"
 OLLAMA_DEFAULT_MODEL = "qwen3-vl:4b"
 
 # Rate limits: wait as long as the server asks, but never longer than this, and only twice.
@@ -231,9 +233,14 @@ class OpenAICompatibleAnalyzer:
         detail = f": {error_type} {error_message}".rstrip()[:240] if (error_type or error_message) else ""
         if response.status_code in (401, 403, 404):
             # A wrong key, model name or address: retrying the same call cannot fix it.
+            hint = (
+                " Hosted catalogues change: set ANALYSIS_MODEL to a model that accepts images (see https://console.groq.com/docs/models)."
+                if response.status_code == 404 and self.provider == "groq"
+                else ""
+            )
             raise AnalysisError(
                 f"The vision model server rejected the request ({response.status_code}{detail}). "
-                "Check the API key, ANALYSIS_MODEL and ANALYSIS_BASE_URL.",
+                f"Check the API key, ANALYSIS_MODEL and ANALYSIS_BASE_URL.{hint}",
                 retryable=False,
             )
         if response.status_code >= 400:

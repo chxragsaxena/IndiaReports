@@ -592,3 +592,12 @@ async def test_noisy_photos_are_shrunk_until_they_fit_a_hosted_models_limit():
     noise.save(raw, "PNG")
     out = await process_image(raw.getvalue())
     assert len(out.data) <= 2_500_000
+
+
+async def test_a_missing_groq_model_explains_how_to_fix_it():
+    def handler(request):
+        return httpx.Response(404, json={"error": {"type": "invalid_request_error", "message": "The model `x` does not exist"}})
+
+    with pytest.raises(AnalysisError) as e:
+        await model_server(handler, provider="groq").analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert not e.value.retryable and "ANALYSIS_MODEL" in str(e.value) and "console.groq.com/docs/models" in str(e.value)
