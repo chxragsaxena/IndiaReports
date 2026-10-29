@@ -18,7 +18,8 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 1 | Scaffolding: tracker, architecture doc, compose, Dockerfile | [x] |
 | 2 | report-service: status PATCH, SQL dashboard, indexes, outbox + event publishing, caching, rate limit | [x] |
 | 3 | notifier (Go): stream consumer, WebSocket hub (geo-tiled), subscriptions, Telegram | [x] |
-| 4 | analytics (Go): rollup consumer, hotspots + SLA endpoints | [ ] |
+| 4 | analytics (Go): rollup consumer, hotspots + SLA endpoints | [x] |
+| 4b | Area polygons + officer assignment (PostGIS ST_Contains), acknowledge link, 7-day escalation to admin, notifier direct messages | [ ] |
 | 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, XSS fix | [ ] |
 | 6 | End-to-end verification, load test, README, deploy notes | [ ] |
 
@@ -60,3 +61,7 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
     across instances, XAUTOCLAIM recovery, dead-letter stream). Geo-tile fan-out (1 degree tiles), slow clients dropped, connection cap.
   - Protocol docs: `services/notifier/README.md`.
   - Known limit: Telegram can only message users who started the bot. No per-user auth on subscriptions (chat_id is the identity).
+- Stage 4 done (analytics). Verified against the live stack: summary, trends, leaderboard and hotspots return correct numbers for
+  generated events; repeat requests hit the in-process cache. Rollup updates are idempotent (processed_events in the same transaction).
+- New requirement from owner (2026-10-29): notify the officer responsible for the polygon/area a report falls in; if not acknowledged
+  within 7 days, escalate to the main admin. Tracked as stage 4b below. The core backend stays Python/FastAPI (report-service owns PostGIS).
