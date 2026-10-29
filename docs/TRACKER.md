@@ -21,7 +21,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 4 | analytics (Go): rollup consumer, hotspots + SLA endpoints | [x] |
 | 4b | Area polygons + officer assignment (PostGIS ST_Contains), acknowledge link, 7-day escalation to admin, notifier direct messages | [x] |
 | 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, acknowledge page, XSS fix | [x] |
-| 6 | End-to-end verification, load test, README, deploy notes | [ ] |
+| 6 | End-to-end verification, load test, README, deploy notes | [x] |
 
 ## Log
 - Stage 1 started: cloned repo to working folder, created `microservices` branch.
@@ -92,3 +92,19 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
 ## Frontend env vars (set in Vercel)
 `VITE_API_URL` (report-service), `VITE_NOTIFIER_URL`, `VITE_ANALYTICS_URL` (both optional: features hide/degrade when unset),
 `VITE_MAP_STYLE` (optional), `VITE_TELEGRAM_BOT` (optional, bot username for the alerts dialog), `VITE_ESCALATION_DAYS` (default 7).
+- Stage 6 done (verification, load test, docs). The first load test FAILED (22 req/s, p95 24 s, 11% errors at 200 users) and drove real fixes:
+  grid rollup for clusters/dashboard (cold cluster query 0.72 s -> 0.036 s, independent of table size), single-flight JSON cache, lightweight
+  pins endpoint + gzip, rollup applied by a background worker instead of inside the write transaction (writes 36 -> 152-210 req/s), bounded
+  DB/Redis connection pools with 503 + Retry-After when saturated (a `too many clients` crash was found and fixed).
+  Final numbers, rig limits and what is NOT proven are in `docs/LOADTEST.md`. 5,000 concurrent WebSocket viewers: 100% delivery, p95 0.9 s, ~180 MB.
+  - Tests: backend 33 pass (31 + 2 Redis-only skipped when Redis unset); Go unit tests pass with `-race`; cross-service integration tests pass on a fresh stack.
+  - Test lessons: two tests passed vacuously at first (invalid titles were rejected with 422 and the responses were ignored); fixed and guarded.
+    Backend tests TRUNCATE tables: always point them at a throwaway database (`reports_test`), never the dev database.
+  - New files: `docs/LOADTEST.md`, root `README.md`, `loadtest/`, `services/notifier/loadtest/ws/`.
+  - Map semantics changed: clusters up to zoom 10, pins from zoom 11 (was 8). Pins endpoint reports `truncated` if a view has more than 500.
+
+## Still open (owner decisions / not done)
+- Render/Vercel/Redis setup and env vars (see root README). Merge `microservices` into `main` only after the deploy is configured:
+  the Render root dir for the backend is unchanged (`backend/`), but the database needs `alembic upgrade head` (and possibly `alembic stamp` first).
+- Google address search on the report form was discussed, not built (terms of use for Places/Geocoding with a non-Google map must be checked first).
+- Not built: multi-machine test, PgBouncer in compose, Telegram fan-out beyond one bot, admin UI for areas/officers (API only).

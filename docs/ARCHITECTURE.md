@@ -28,13 +28,13 @@ No service reads another service's database. They only share events on the strea
 Delivery is at-least-once, so every consumer must be idempotent (keyed by event id).
 
 ## Scaling design (India scale)
-Be clear about what is designed in versus what has been verified. The design below is built to scale horizontally; it has **not** been load-tested at 100M users, and nobody can honestly claim that from a laptop. A load-test script and measured numbers live in `docs/LOADTEST.md` once stage 6 is done.
+Be clear about what is designed in versus what has been verified. The design below is built to scale horizontally, but it has **not** been run across multiple machines or at 100M users, and nobody can honestly claim that from a laptop. What was measured on one machine, what failed first and what was fixed is in `docs/LOADTEST.md`.
 
-1. **Stateless services.** No in-process state that matters. Run N copies behind a load balancer.
-2. **Read path is cheap.** Map views are bounding-box queries on a GiST index. Cluster and dashboard responses are cached in Redis with short TTLs, and the cache key snaps the viewport to a grid so many users share entries.
+1. **Stateless services.** No in-process state that matters (the in-process cache is only a fallback). Run N copies behind a load balancer.
+2. **Read path is cheap.** Clusters and dashboard numbers are read from a precomputed grid rollup (`report_cells`), not computed from the reports table. Responses are cached as finished JSON in Redis with single-flight (one request recomputes an expired key, the rest wait), and the cache key snaps the viewport to a grid so many users share entries. See `docs/LOADTEST.md`.
 3. **Bounded responses.** Report list queries have a hard row cap; clusters aggregate in the database. No endpoint returns an unbounded result set.
 4. **Write path is decoupled.** A report insert plus its outbox row are one DB transaction. A relay publishes to the stream, so a Redis outage never loses an event and never blocks report creation.
-5. **Fan-out by geography.** WebSocket clients join geo-tile rooms for their viewport; a new report is sent only to clients in that tile, not to everyone. Notifier instances share state through Redis Pub/Sub so any instance can serve any client.
+5. **Fan-out by geography.** WebSocket clients join geo-tile rooms for their viewport; a new report is sent only to clients in that tile, not to everyone. Every notifier instance reads the whole event stream itself, so any instance can serve any client and no cross-instance messaging is needed.
 6. **Rollups, not scans.** Analytics updates counters per event (upserts into rollup tables). Dashboards never scan the raw reports table.
 7. **Abuse protection.** Per-IP rate limiting on writes via Redis; admin-only status changes behind an API key.
 8. **Database path to scale.** Connection pooling (use PgBouncer in front of Postgres), read replicas for the read-heavy endpoints, and partitioning `reports` by time (or state) once row counts reach hundreds of millions.
@@ -58,3 +58,12 @@ Every report is routed to a named person, and silence is not allowed to hide a p
 
 Security: the recipient's chat id and token travel only on the internal stream. The notifier strips them from every WebSocket
 payload (covered by a test) and redacts tokens from logs.
+
+## Read and write paths (what the load test changed)
+- **Writes never touch shared hot rows.** A request inserts the report and an outbox event in one transaction and returns. A background applier
+  (`app/events/rollup.py`) folds events into the rollup in batches. The map and dashboard lag by about a second (eventual consistency).
+- **Clusters** are a range scan over `report_cells` (levels for zoom 3-10, finer grids as you zoom in). Pins (zoom 11+) are `id, status, lat, lng` only; the
+  full record is fetched by id when a pin is opened.
+- **Connection budget.** workers x instances x (pool + overflow) must stay under the database `max_connections`; behind PgBouncer it can be much larger.
+  When the pool is exhausted the API answers `503` with `Retry-After`, not a slow `500`.
+- **Repair.** `python -m scripts.rebuild_cells` rebuilds the rollup from the reports table (run it after bulk loads that bypass the app).
