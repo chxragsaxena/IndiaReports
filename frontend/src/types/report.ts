@@ -75,3 +75,11 @@ export function isInIndia(lat: number, lng: number): boolean {
         lng <= INDIA_BOUNDS.maxLng
     );
 }
+
+/** What the map needs to draw one report. Everything else is fetched by id on click. */
+export interface Pin {
+    id: string;
+    status: ReportStatus;
+    latitude: number;
+    longitude: number;
+}

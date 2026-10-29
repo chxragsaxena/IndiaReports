@@ -11,6 +11,7 @@ from app.events.outbox import add_event, report_created_payload, status_changed_
 from app.models.outbox import OutboxEvent
 from app.models.report import Report
 from app.services.assignment_service import find_assignee, get_admin
+from app.services.cell_service import rebuild
 from app.models.enums import ReportCategory, ReportStatus
 
 # --------------------------------------------------
@@ -301,7 +302,13 @@ async def seed():
 
         await session.commit()
 
-        print("Successfully inserted 500 reports with history.")
+    # The reports were written directly, so build the map/dashboard rollup from them.
+    # (This also marks the seeded events as already counted.)
+    async with AsyncSessionLocal() as session:
+        cells = await rebuild(session)
+        await session.commit()
+
+    print(f"Successfully inserted 500 reports with history ({cells} map cells).")
 
 
 if __name__ == "__main__":

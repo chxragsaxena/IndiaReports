@@ -25,8 +25,8 @@ Client -> server, whenever the map moves (debounce ~300 ms):
 {"type":"viewport","bbox":[west,south,east,north],"zoom":11.2}
 ```
 Server -> client:
-- `{"type":"report","event":"ReportCreated"|"ReportStatusChanged","report":{...}}` when `zoom >= 8` and the report is inside the viewport.
-- `{"type":"refresh"}` when `zoom < 8` and a report landed inside the viewport (at most once per 3 s). Re-fetch clusters from report-service.
+- `{"type":"report","event":"ReportCreated"|"ReportStatusChanged","report":{...}}` when `zoom >= 11` and the report is inside the viewport.
+- `{"type":"refresh"}` when `zoom < 11` and a report landed inside the viewport (at most once per 3 s). Re-fetch clusters from report-service.
 
 A client that cannot keep up is disconnected rather than allowed to slow others. Reconnect with backoff and resend the viewport.
 

@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 # Tests run against a real PostGIS database (see docs/TESTING in the tracker).
 # DATABASE_URL must point at a throwaway database that has been migrated.
+from app.core.cache import clear_local_cache  # noqa: E402
 from app.core.redis import close_redis, get_redis  # noqa: E402
 from app.db.session import engine  # noqa: E402
 from app.main import app  # noqa: E402
@@ -14,7 +15,8 @@ from app.main import app  # noqa: E402
 @pytest_asyncio.fixture(autouse=True)
 async def clean_tables():
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE reports, outbox_events, officers, areas RESTART IDENTITY CASCADE"))
+        await conn.execute(text("TRUNCATE reports, outbox_events, officers, areas, report_cells RESTART IDENTITY CASCADE"))
+    clear_local_cache()
     redis = get_redis()
     if redis is not None:
         await redis.flushdb()  # throwaway test Redis only

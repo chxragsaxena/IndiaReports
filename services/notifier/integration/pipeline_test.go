@@ -141,9 +141,8 @@ func TestReportFlowsToWebSocketAndSubscribers(t *testing.T) {
 	}
 
 	// 1. The zoomed-in Mumbai client receives the pin live.
-	msg := mumbaiZoomedIn.next(t, 10*time.Second)
-	report, _ := msg["report"].(map[string]any)
-	if msg["type"] != "report" || report["title"] != title {
+	msg := mumbaiZoomedIn.nextReport(t, title, 10*time.Second)
+	if msg["type"] != "report" || msg["event"] != "ReportCreated" {
 		t.Fatalf("unexpected message: %v", msg)
 	}
 
@@ -153,7 +152,7 @@ func TestReportFlowsToWebSocketAndSubscribers(t *testing.T) {
 	}
 
 	// 3. The Delhi client hears nothing about a Mumbai report.
-	delhiZoomedIn.expectSilence(t, 1500*time.Millisecond)
+	delhiZoomedIn.expectNoReport(t, title, 1500*time.Millisecond)
 
 	// 4. The matching subscriber is delivered exactly once; the Delhi one is not.
 	ctx := context.Background()
@@ -298,7 +297,7 @@ func TestOfficerIsAlertedThenUnacknowledgedReportEscalatesToAdmin(t *testing.T) 
 		t.Fatalf("create report: %d %v", s, report)
 	}
 
-	pinned := viewer.next(t, 10*time.Second)
+	pinned := viewer.nextReport(t, "Escalation test", 10*time.Second)
 	raw, _ := json.Marshal(pinned)
 	for _, secret := range []string{officerChat, "ack_token", "Ward Officer"} {
 		if strings.Contains(string(raw), secret) {
@@ -336,5 +335,42 @@ func TestOfficerIsAlertedThenUnacknowledgedReportEscalatesToAdmin(t *testing.T) 
 	if err := conn.QueryRow(ctx,
 		"SELECT max(attempts) FROM direct_deliveries WHERE chat_id=$1", officerChat).Scan(&attempts); err != nil || attempts != 1 {
 		t.Fatalf("officer should be messaged exactly once, attempts=%d err=%v", attempts, err)
+	}
+}
+
+// nextReport waits for the websocket message about the report with this title,
+// ignoring unrelated traffic (other tests, background escalations on a busy stack).
+func (c *wsClient) nextReport(t *testing.T, title string, wait time.Duration) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(wait)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("no websocket message for report %q within %s", title, wait)
+		}
+		m := c.next(t, remaining)
+		if r, ok := m["report"].(map[string]any); ok && r["title"] == title {
+			return m
+		}
+	}
+}
+
+// expectNoReport asserts that nothing about this report reaches the client in the
+// given time. Messages about other reports are ignored.
+func (c *wsClient) expectNoReport(t *testing.T, title string, wait time.Duration) {
+	t.Helper()
+	deadline := time.After(wait)
+	for {
+		select {
+		case m, ok := <-c.msgs:
+			if !ok {
+				t.Fatal("websocket closed")
+			}
+			if r, ok := m["report"].(map[string]any); ok && r["title"] == title {
+				t.Fatalf("client received a report outside its viewport: %v", m)
+			}
+		case <-deadline:
+			return
+		}
 	}
 }

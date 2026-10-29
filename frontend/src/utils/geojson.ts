@@ -1,28 +1,19 @@
 import type { Feature, FeatureCollection, Point } from "geojson";
-import type { Report } from "../types/report";
+import type { Pin } from "../types/report";
 
-/** Only what the map layers need. Anything else is fetched on demand by id. */
+/** The map layers colour by status and highlight by id; nothing else is needed. */
 export interface PinProps {
     id: string;
-    title: string;
-    category: string;
     status: string;
-    city: string;
 }
 
 export type PinFeature = Feature<Point, PinProps>;
 
-export function reportToFeature(report: Pick<Report, "id" | "title" | "category" | "status" | "city" | "latitude" | "longitude">): PinFeature {
+export function reportToFeature(pin: Pin): PinFeature {
     return {
         type: "Feature",
-        geometry: { type: "Point", coordinates: [report.longitude, report.latitude] },
-        properties: {
-            id: report.id,
-            title: report.title,
-            category: report.category,
-            status: report.status,
-            city: report.city,
-        },
+        geometry: { type: "Point", coordinates: [pin.longitude, pin.latitude] },
+        properties: { id: pin.id, status: pin.status },
     };
 }
 

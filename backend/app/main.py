@@ -1,8 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import TimeoutError as SATimeoutError
+from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
 from app.api.v1.api import api_router
@@ -11,6 +14,7 @@ from app.core.redis import close_redis, get_redis
 from app.db.session import engine
 from app.events.escalation import run_escalation
 from app.events.outbox import run_relay
+from app.events.rollup import run_rollup
 
 
 @asynccontextmanager
@@ -19,6 +23,7 @@ async def lifespan(app: FastAPI):
     tasks = [
         asyncio.create_task(run_relay(stop)),
         asyncio.create_task(run_escalation(stop)),
+        asyncio.create_task(run_rollup(stop)),
     ]
     try:
         yield
@@ -35,6 +40,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# JSON for map views is large and very compressible; compress anything over 1 KB.
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=4)
+
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 
 app.add_middleware(
@@ -45,6 +53,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(SATimeoutError)
+async def pool_exhausted(_: Request, __: SATimeoutError):
+    """Every database connection is busy and the wait timed out: shed load politely.
+    Clients (and load balancers) can retry shortly; this beats a slow 500 for everyone."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The server is busy. Please try again in a moment."},
+        headers={"Retry-After": "2"},
+    )
+
 
 app.include_router(
     api_router,

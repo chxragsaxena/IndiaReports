@@ -5,15 +5,15 @@ import type { Feature, FeatureCollection, Point } from "geojson";
 
 import styles from "./IndiaMap.module.css";
 import { MAP_STYLE } from "../../config/api";
-import { getClusters, getReports } from "../../services/reportService";
+import { getClusters, getPins } from "../../services/reportService";
 import { EMPTY_COLLECTION, reportToFeature, toCollection } from "../../utils/geojson";
 import type { PinFeature } from "../../utils/geojson";
 import { useLiveSocket } from "../../hooks/useLiveSocket";
 import type { LiveReport, LiveStatus } from "../../hooks/useLiveSocket";
 import type { ReportStatus } from "../../types/report";
 
-/** At or above this zoom the map shows individual reports, below it clusters. */
-const PIN_ZOOM = 8;
+/** At or above this zoom the map shows individual reports, below it clusters (matches the server and notifier). */
+const PIN_ZOOM = 11;
 const PULSE_MS = 2500;
 const INDIA_CENTER: [number, number] = [78.9629, 22.5937];
 
@@ -119,8 +119,8 @@ function IndiaMap({
                 pinsRef.current.clear();
                 pins.setData(EMPTY_COLLECTION);
             } else {
-                const data = await getReports({ ...view, ...filters }, controller.signal);
-                pinsRef.current = new Map(data.map((r) => [r.id, reportToFeature(r)]));
+                const data = await getPins({ ...view, ...filters }, controller.signal);
+                pinsRef.current = new Map(data.pins.map((r) => [r.id, reportToFeature(r)]));
                 pins.setData(toCollection([...pinsRef.current.values()]));
                 clusters.setData({ type: "FeatureCollection", features: [] });
             }
@@ -162,8 +162,7 @@ function IndiaMap({
                 addPulse(r.longitude, r.latitude);
                 if (map.getZoom() >= PIN_ZOOM) {
                     pinsRef.current.set(r.report_id, reportToFeature({
-                        id: r.report_id, title: r.title, category: r.category,
-                        status: status ?? "OPEN", city: r.city, latitude: r.latitude, longitude: r.longitude,
+                        id: r.report_id, status: status ?? "OPEN", latitude: r.latitude, longitude: r.longitude,
                     }));
                     source(map, "reports")?.setData(toCollection([...pinsRef.current.values()]));
                 }

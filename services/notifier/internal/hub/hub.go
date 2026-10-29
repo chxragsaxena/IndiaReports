@@ -14,7 +14,7 @@ import (
 const (
 	// At or above this zoom the client gets individual reports; below it, a
 	// throttled "refresh" hint so it re-fetches (cached) clusters instead.
-	PinZoom         = 8.0
+	PinZoom         = 11.0
 	RefreshInterval = 3 * time.Second
 	sendBuffer      = 64
 )

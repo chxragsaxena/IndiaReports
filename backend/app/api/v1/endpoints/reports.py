@@ -1,20 +1,26 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rate_limit import rate_limit_writes
 from app.core.security import require_admin
 from app.db.session import get_db
 from app.schemas.admin import AcknowledgeRequest
-from app.schemas.cluster import ClusterResponse
-from app.schemas.dashboard import DashboardResponse
 from app.schemas.report import ReportCreate, ReportResponse, ReportStatusUpdate
 from app.services import assignment_service
 from app.services.report_service import ReportService
 
 router = APIRouter()
+
+# Read endpoints serve ready-made JSON text from the cache. A few seconds of public
+# caching lets browsers and a CDN absorb repeated identical requests as well.
+READ_CACHE_CONTROL = "public, max-age=5"
+
+
+def json_response(body: str) -> Response:
+    return Response(content=body, media_type="application/json", headers={"Cache-Control": READ_CACHE_CONTROL})
 
 
 @router.post(
@@ -62,20 +68,15 @@ async def get_reports(
     )
 
 
-@router.get(
-    "/dashboard",
-    response_model=DashboardResponse,
-)
+@router.get("/dashboard")
 async def get_dashboard(
     db: AsyncSession = Depends(get_db),
 ):
-    return await ReportService.get_dashboard(db)
+    """Totals, per-category counts and the 5 latest reports (JSON, see DashboardResponse)."""
+    return json_response(await ReportService.get_dashboard(db))
 
 
-@router.get(
-    "/clusters",
-    response_model=list[ClusterResponse],
-)
+@router.get("/clusters")
 async def get_clusters(
     min_lat: float,
     max_lat: float,
@@ -86,15 +87,43 @@ async def get_clusters(
     category: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    return await ReportService.get_clusters(
-        db=db,
-        min_lat=min_lat,
-        max_lat=max_lat,
-        min_lng=min_lng,
-        max_lng=max_lng,
-        zoom=zoom,
-        status=status,
-        category=category,
+    """Clusters for a viewport: a list of {latitude, longitude, count}."""
+    return json_response(
+        await ReportService.get_clusters(
+            db=db,
+            min_lat=min_lat,
+            max_lat=max_lat,
+            min_lng=min_lng,
+            max_lng=max_lng,
+            zoom=zoom,
+            status=status,
+            category=category,
+        )
+    )
+
+
+@router.get("/pins")
+async def get_pins(
+    min_lat: float,
+    max_lat: float,
+    min_lng: float,
+    max_lng: float,
+    status: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Map pins for a viewport: {truncated, pins: [{id, status,
+    latitude, longitude}]}. Fetch the full record by id when a pin is opened."""
+    return json_response(
+        await ReportService.get_pins(
+            db=db,
+            min_lat=min_lat,
+            max_lat=max_lat,
+            min_lng=min_lng,
+            max_lng=max_lng,
+            status=status,
+            category=category,
+        )
     )
 
 

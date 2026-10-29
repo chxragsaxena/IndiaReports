@@ -4,6 +4,8 @@
 services:
   postgres:
     image: postgis/postgis:16-3.4
+    # Several services and workers each hold a small pool; leave headroom.
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -40,6 +42,7 @@ services:
       ADMIN_API_KEY: dev-admin-key
       ESCALATION_AFTER_SECONDS: ${ESCALATION_AFTER_SECONDS:-604800}
       ESCALATION_CHECK_SECONDS: ${ESCALATION_CHECK_SECONDS:-60}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
     ports:
       - "${REPORT_PORT:-8000}:8000"
     restart: on-failure

@@ -17,12 +17,17 @@ def get_redis() -> aioredis.Redis | None:
     if not settings.REDIS_URL:
         return None
     if _client is None:
-        _client = aioredis.from_url(
+        # A bounded pool that makes callers wait briefly for a connection, instead of
+        # opening a new one per concurrent request (which times out under load).
+        pool = aioredis.BlockingConnectionPool.from_url(
             settings.REDIS_URL,
             decode_responses=True,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            timeout=2,
             socket_connect_timeout=2,
             socket_timeout=2,
         )
+        _client = aioredis.Redis(connection_pool=pool)
     return _client
 
 

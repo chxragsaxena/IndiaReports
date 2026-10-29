@@ -22,11 +22,20 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "*"
 
-    DB_POOL_SIZE: int = 10
-    DB_MAX_OVERFLOW: int = 20
+    # Connection budget: workers x instances x (DB_POOL_SIZE + DB_MAX_OVERFLOW) must stay
+    # below the database max_connections (default 100), with room for other services.
+    # Behind PgBouncer this can be much larger.
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+    # How long a request waits for a free connection before answering 503.
+    DB_POOL_TIMEOUT: int = 5
+    REDIS_MAX_CONNECTIONS: int = 100
 
-    # Hard cap on rows returned by the map list endpoint.
+    # Hard cap on rows returned by the full-record list endpoint.
     MAX_REPORTS_PER_QUERY: int = 1000
+
+    # Hard cap on pins returned for one map viewport (the response says if it truncated).
+    MAX_PINS_PER_QUERY: int = 500
 
     # Creating reports: requests per IP per minute.
     RATE_LIMIT_PER_MINUTE: int = 30

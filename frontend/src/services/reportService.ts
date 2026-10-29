@@ -1,5 +1,5 @@
 import axios, { isAxiosError } from "axios";
-import type { NewReport, Report } from "../types/report";
+import type { NewReport, Pin, Report } from "../types/report";
 import { API_URL } from "../config/api";
 
 const api = axios.create({
@@ -94,5 +94,30 @@ export async function createReport(report: NewReport): Promise<Report> {
 
 export async function acknowledgeReport(id: string, token: string): Promise<Report> {
     const response = await api.post<Report>(`/reports/${encodeURIComponent(id)}/acknowledge`, { token });
+    return response.data;
+}
+
+export interface PinsResult {
+    pins: Pin[];
+    /** More reports exist in this view than were returned: zoom in to see them all. */
+    truncated: boolean;
+}
+
+/** Lightweight pins for the map (a fraction of the size of full reports, and cached). */
+export async function getPins(
+    params: ViewportParams & FilterParams,
+    signal?: AbortSignal,
+): Promise<PinsResult> {
+    const response = await api.get<PinsResult>("/reports/pins", {
+        signal,
+        params: {
+            min_lat: params.minLat,
+            max_lat: params.maxLat,
+            min_lng: params.minLng,
+            max_lng: params.maxLng,
+            status: params.status,
+            category: params.category,
+        },
+    });
     return response.data;
 }

@@ -22,8 +22,17 @@ class OutboxEvent(Base):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Set once the event has been folded into the clusters/dashboard rollup.
+    rolled_up_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
+        Index(
+            "ix_outbox_not_rolled_up",
+            "id",
+            postgresql_where=text("rolled_up_at IS NULL"),
+        ),
         Index(
             "ix_outbox_unpublished",
             "id",
