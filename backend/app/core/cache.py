@@ -14,12 +14,12 @@ over, and the value is simply recomputed per process.
 """
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-import orjson
 
 from app.core.redis import get_redis
 
@@ -113,7 +113,8 @@ async def _compute_once(key: str, ttl: int, compute: Callable[[], Awaitable[Any]
                     return hit
 
     try:
-        value = orjson.dumps(await compute()).decode()
+        # Compact JSON, non-ASCII kept as is. Stdlib on purpose: no compiled dependency to build.
+        value = json.dumps(await compute(), separators=(",", ":"), ensure_ascii=False, default=str)
         await _write(key, value, ttl)
         return value
     finally:
