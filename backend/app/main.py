@@ -17,6 +17,7 @@ from app.core.storage import get_store
 from app.db.session import engine
 from app.events.analysis import run_analysis
 from app.events.escalation import run_escalation
+from app.core.auth import signing_source
 from app.events.outbox import run_relay
 from app.events.rollup import run_rollup
 
@@ -44,6 +45,12 @@ async def ensure_photo_bucket() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     stop = asyncio.Event()
+
+    if signing_source() == "derived":
+        logger.warning(
+            "JWT_SECRET is not set: sign-in tokens are signed with a key derived from DATABASE_URL. "
+            "It works, but set JWT_SECRET to a long random string."
+        )
 
     tasks = [
         asyncio.create_task(ensure_photo_bucket()),
@@ -119,4 +126,4 @@ async def ready():
         except Exception:
             redis_state = "down"
 
-    return {"status": "ready", "database": "up", "redis": redis_state}
+    return {"status": "ready", "database": "up", "redis": redis_state, "sign_in_key": signing_source()}

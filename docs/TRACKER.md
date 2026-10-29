@@ -131,9 +131,16 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   (stamps it at e1e34496a6ba first), and is safe to run on every start. Tested against all three states and run twice.
   Render Start Command: `python -m scripts.migrate && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
+- "Sign-in is not configured" on the live site (2026-10-29): the Render process had neither `JWT_SECRET` nor `ADMIN_API_KEY` even after the owner added them
+  (diagnosed from outside: a fake token returned 503, and a wrong admin key got the "no key configured" 401 message). Instead of depending on that setting reaching the process:
+  sign-in now falls back to a key derived from `DATABASE_URL` (HMAC; unique per deployment, stable across restarts), logs a startup warning, and `/ready` reports
+  `sign_in_key: env|derived`. An explicit `JWT_SECRET` always wins. Added `scripts/make_admin.py` (promote a signed-up email, no API key needed, no-op if the email is unknown)
+  for hosts with no shell. 96 backend tests pass (3 new).
+  First admin on Render: sign up on the site, then Start Command
+  `python -m scripts.migrate && python -m scripts.make_admin you@example.com && uvicorn app.main:app --host 0.0.0.0 --port $PORT` and restart.
+
 ## Still open (owner decisions / not done)
-- Render env vars still to set: `JWT_SECRET` (long random string; without it the admin key signs tokens), `CORS_ORIGINS` (the Vercel URL), then create the first admin
-  (`POST /api/v1/admin/users` with `X-API-Key`). Photos/AI on Render need `S3_*` storage settings and `GROQ_API_KEY`; Redis is not configured there (caching falls back to per-process).
+- Render env vars worth setting: `JWT_SECRET` (long random string; lets you rotate without touching the database password), `CORS_ORIGINS` (the Vercel URL). Photos/AI on Render need `S3_*` storage settings and `GROQ_API_KEY`; Redis is not configured there (caching falls back to per-process).
 - The Go notifier and analytics services are not deployed on Render; the live site uses report-service only (live updates and Insights-from-analytics need those two).
 - Google address search on the report form was discussed, not built (terms of use for Places/Geocoding with a non-Google map must be checked first).
 - Not built: multi-machine test, PgBouncer in compose, Telegram fan-out beyond one bot, admin UI for areas/officers (API only).

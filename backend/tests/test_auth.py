@@ -178,3 +178,47 @@ async def test_requiring_login_to_report(client, monkeypatch):
 async def test_invalid_token_on_report_is_an_error_not_anonymous(client):
     r = await client.post("/api/v1/reports/", json=sample_report(), headers=bearer("garbage"))
     assert r.status_code == 401
+
+
+async def test_sign_in_works_with_no_secret_configured(client, monkeypatch):
+    """A deployment that never set JWT_SECRET or ADMIN_API_KEY must still let people sign in."""
+    monkeypatch.setattr(settings, "JWT_SECRET", None)
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", None)
+
+    body = await register(client, email="nosecret@example.org")
+    me = await client.get("/api/v1/auth/me", headers=bearer(body["access_token"]))
+    assert me.status_code == 200 and me.json()["email"] == "nosecret@example.org"
+
+    login = await client.post("/api/v1/auth/login", json={"email": "nosecret@example.org", "password": PASSWORD})
+    assert login.status_code == 200
+
+    ready = await client.get("/ready")
+    assert ready.json()["sign_in_key"] == "derived"
+
+
+async def test_derived_key_is_stable_and_specific_to_the_database(monkeypatch):
+    from app.core import auth
+
+    monkeypatch.setattr(settings, "JWT_SECRET", None)
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", None)
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql+asyncpg://u:pw-one@h/db")
+    first = auth._secret()
+    assert first == auth._secret()  # same across calls, so tokens survive a restart
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql+asyncpg://u:pw-two@h/db")
+    assert auth._secret() != first  # another deployment cannot forge this one's tokens
+    monkeypatch.setattr(settings, "JWT_SECRET", "explicit-secret")
+    assert auth._secret() == "explicit-secret"  # an explicit secret always wins
+
+
+async def test_make_admin_script_promotes_only_the_named_account(client):
+    from scripts.make_admin import promote
+
+    await register(client, email="future-admin@example.org")
+    await register(client, email="someone-else@example.org")
+    assert await promote("Future-Admin@Example.org") is True  # case-insensitive
+    assert await promote("never-signed-up@example.org") is False  # a no-op, never an error
+
+    login = await client.post("/api/v1/auth/login", json={"email": "future-admin@example.org", "password": PASSWORD})
+    assert login.json()["user"]["role"] == "admin"
+    other = await client.post("/api/v1/auth/login", json={"email": "someone-else@example.org", "password": PASSWORD})
+    assert other.json()["user"]["role"] == "citizen"

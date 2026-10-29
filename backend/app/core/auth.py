@@ -1,6 +1,8 @@
 """Passwords, sign-in tokens, and the dependencies that turn a request into a user."""
 
 import asyncio
+import hashlib
+import hmac
 import time
 import uuid
 
@@ -32,11 +34,20 @@ async def verify_password(password_hash: str, password: str) -> bool:
     return await asyncio.to_thread(check)
 
 
+def signing_source() -> str:
+    """Where the sign-in signing key comes from: 'env' (JWT_SECRET or ADMIN_API_KEY) or 'derived'."""
+    return "env" if (settings.JWT_SECRET or settings.ADMIN_API_KEY) else "derived"
+
+
 def _secret() -> str:
-    secret = settings.JWT_SECRET or settings.ADMIN_API_KEY
-    if not secret:
-        raise HTTPException(status_code=503, detail="Sign-in is not configured.")
-    return secret
+    """Key that signs sign-in tokens. Prefer an explicit secret. Without one, derive a key from
+    the database connection string (its password is unique to this deployment, never public, and
+    stable across restarts and instances) so sign-in still works instead of failing. Setting
+    JWT_SECRET is better: it can be rotated without changing the database password."""
+    explicit = settings.JWT_SECRET or settings.ADMIN_API_KEY
+    if explicit:
+        return explicit
+    return hmac.new(settings.DATABASE_URL.encode(), b"indiareports/sign-in/v1", hashlib.sha256).hexdigest()
 
 
 def create_token(user: User) -> str:
