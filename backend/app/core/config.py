@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -99,6 +101,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
+        # Render mounts "Secret Files" here, one file per setting named after it (JWT_SECRET, ...).
+        # Environment variables still win over these files.
+        secrets_dir="/etc/secrets" if os.path.isdir("/etc/secrets") else None,
         extra="ignore"
     )
 
