@@ -32,6 +32,9 @@ type Event struct {
 	CreatedAt string  `json:"created_at,omitempty"`
 	ChangedAt string  `json:"changed_at,omitempty"`
 
+	// Seeded or replayed data: counted by analytics but never alerted or pushed live.
+	Historical bool `json:"historical,omitempty"`
+
 	// Direct recipient (the responsible officer, or the admin on escalation).
 	// Private: never forward these fields to WebSocket clients; use Public().
 	Recipient        *Recipient `json:"recipient,omitempty"`

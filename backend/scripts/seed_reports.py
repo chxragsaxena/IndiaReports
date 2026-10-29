@@ -1,10 +1,16 @@
 import asyncio
 import random
 
+from datetime import datetime, timedelta, timezone
+
+from geoalchemy2.elements import WKTElement
 from sqlalchemy import delete
 
 from app.db.session import AsyncSessionLocal
+from app.events.outbox import add_event, report_created_payload, status_changed_payload
+from app.models.outbox import OutboxEvent
 from app.models.report import Report
+from app.services.assignment_service import find_assignee, get_admin
 from app.models.enums import ReportCategory, ReportStatus
 
 # --------------------------------------------------
@@ -184,16 +190,37 @@ LANDMARKS = {
 
 # --------------------------------------------------
 
+HISTORY_DAYS = 30
+ESCALATION_DAYS = 7
+
+
+def pick_times(now: datetime, status: str) -> tuple[datetime, datetime | None]:
+    """A creation time within the last 30 days (recent days are busier) and, for
+    resolved reports, a resolution time after a realistic delay (hours to ~10 days)."""
+    created = now - timedelta(days=HISTORY_DAYS * random.random() ** 1.6, minutes=random.randint(0, 1439))
+    created = min(created, now - timedelta(minutes=5))
+    if status != ReportStatus.RESOLVED.value:
+        return created, None
+    delay = timedelta(hours=min(240.0, random.lognormvariate(3.0, 1.0)))
+    return created, min(created + delay, now - timedelta(minutes=1))
+
+
 async def seed():
+    """Replaces all reports with demo data. Events are marked historical so the
+    notifier does not alert anyone about them, while analytics still counts them."""
+
+    now = datetime.now(timezone.utc)
 
     async with AsyncSessionLocal() as session:
 
-        print("Deleting old reports...")
+        print("Deleting old reports and events...")
 
         await session.execute(delete(Report))
+        await session.execute(delete(OutboxEvent))
         await session.commit()
 
-        reports = []
+        admin = await get_admin(session)
+        escalate_after = timedelta(days=ESCALATION_DAYS)
 
         for _ in range(500):
 
@@ -204,46 +231,77 @@ async def seed():
             )[0]
 
             issue = random.choice(ISSUES)
+            landmark = random.choice(LANDMARKS[city])
 
-            landmark = random.choice(
-                LANDMARKS[city]
-            )
+            status = random.choices(
+                [
+                    ReportStatus.OPEN.value,
+                    ReportStatus.IN_PROGRESS.value,
+                    ReportStatus.RESOLVED.value,
+                ],
+                weights=[55, 25, 20],
+                k=1,
+            )[0]
+            created_at, resolved_at = pick_times(now, status)
+
+            latitude = lat + random.uniform(-0.03, 0.03)
+            longitude = lon + random.uniform(-0.03, 0.03)
 
             report = Report(
-
                 title=issue["title"],
                 description=issue["description"],
                 category=issue["category"],
-
-                latitude=lat + random.uniform(-0.03, 0.03),
-                longitude=lon + random.uniform(-0.03, 0.03),
-
+                latitude=latitude,
+                longitude=longitude,
+                geom=WKTElement(f"POINT({longitude} {latitude})", srid=4326),
                 address=f"Near {landmark}",
                 landmark=landmark,
-
                 city=city,
                 district=district,
                 state=state,
                 pincode=pincode,
-
-                status=random.choices(
-                    [
-                        ReportStatus.OPEN.value,
-                        ReportStatus.IN_PROGRESS.value,
-                        ReportStatus.RESOLVED.value,
-                    ],
-                    weights=[55, 25, 20],
-                    k=1,
-                )[0],
+                status=ReportStatus.OPEN.value,
+                created_at=created_at,
+                updated_at=created_at,
             )
+            session.add(report)
+            await session.flush()
 
-            reports.append(report)
+            assignee = await find_assignee(session, latitude, longitude)
+            if assignee is not None:
+                report.assigned_officer_id = assignee.id
+                report.assigned_at = created_at
 
-        session.add_all(reports)
+            # Old, never-acknowledged reports have already escalated to the admin; recording
+            # that here stops the live escalation job from alerting about the whole backlog.
+            if (
+                status == ReportStatus.OPEN.value
+                and assignee is not None
+                and admin is not None
+                and assignee.id != admin.id
+                and created_at + escalate_after < now
+            ):
+                report.escalated_at = created_at + escalate_after
+                report.assigned_officer_id = admin.id
+
+            created_payload = report_created_payload(report) | {"historical": True}
+            add_event(session, "ReportCreated", created_payload)
+
+            if status != ReportStatus.OPEN.value:
+                changed_at = resolved_at or (created_at + timedelta(hours=random.randint(1, 36)))
+                changed_at = min(changed_at, now - timedelta(minutes=1))
+                report.status = status
+                report.acknowledged_at = created_at + timedelta(minutes=random.randint(10, 600))
+                report.updated_at = changed_at
+                add_event(
+                    session,
+                    "ReportStatusChanged",
+                    status_changed_payload(report, ReportStatus.OPEN.value, changed_at) | {"historical": True},
+                )
 
         await session.commit()
 
-        print(f"Successfully inserted {len(reports)} reports.")
+        print("Successfully inserted 500 reports with history.")
 
 
 if __name__ == "__main__":

@@ -152,6 +152,9 @@ func NewDispatcher(s *store.Store, sender Sender, log *slog.Logger, appURL strin
 // error means the entry should be retried later (already-sent subscribers are
 // skipped on the retry via ClaimDelivery).
 func (d *Dispatcher) Handle(ctx context.Context, ev events.Event) error {
+	if ev.Historical {
+		return nil // backfilled data: nobody should be alerted about old reports
+	}
 	// Both paths always run; errors.Join keeps the entry pending if either failed.
 	directErr := d.deliverDirect(ctx, ev)
 	subsErr := d.notifySubscribers(ctx, ev)

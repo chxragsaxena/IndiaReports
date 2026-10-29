@@ -37,6 +37,13 @@ func TestParseFallsBackToStreamIDForEventID(t *testing.T) {
 	}
 }
 
+func TestParseReadsHistoricalFlag(t *testing.T) {
+	ev, err := Parse("1-0", map[string]any{"data": `{"report_id":"r","historical":true}`})
+	if err != nil || !ev.Historical {
+		t.Fatalf("historical flag not parsed: %+v, %v", ev, err)
+	}
+}
+
 func TestCurrentStatusPrefersNewStatus(t *testing.T) {
 	if got := (Event{Status: "OPEN", NewStatus: "RESOLVED"}).CurrentStatus(); got != "RESOLVED" {
 		t.Fatalf("got %s", got)

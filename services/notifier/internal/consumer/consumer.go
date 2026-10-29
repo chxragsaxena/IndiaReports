@@ -90,7 +90,9 @@ func (c *Consumer) RunLive(ctx context.Context) {
 					c.log.Warn("skipping bad event", "err", err)
 					continue
 				}
-				c.hub.Broadcast(ev)
+				if !ev.Historical {
+					c.hub.Broadcast(ev)
+				}
 			}
 		}
 	}

@@ -13,7 +13,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/init-databases.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # TCP check: during first-boot init only a socket-only temporary server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -41,6 +42,7 @@ services:
       ESCALATION_CHECK_SECONDS: ${ESCALATION_CHECK_SECONDS:-60}
     ports:
       - "${REPORT_PORT:-8000}:8000"
+    restart: on-failure
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +58,7 @@ services:
       PORT: "8100"
     ports:
       - "${NOTIFIER_PORT:-8100}:8100"
+    restart: on-failure
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,6 +73,7 @@ services:
       PORT: "8200"
     ports:
       - "${ANALYTICS_PORT:-8200}:8200"
+    restart: on-failure
     depends_on:
       postgres:
         condition: service_healthy
