@@ -1,22 +1,79 @@
-version: "3.9"
+# IndiaReports - local stack. `docker compose up --build`
+# Each service owns its own database (same Postgres instance only for local convenience).
 
 services:
   postgres:
-    image: postgres:16
-    container_name: india_reports_db
-
-    restart: always
-
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: india_reports
-
     ports:
       - "5432:5432"
-
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./infra/init-databases.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  report-service:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/reports_db
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_API_KEY: dev-admin-key
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  notifier:
+    build: ./services/notifier
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/notifier_db?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      PORT: "8100"
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  analytics:
+    build: ./services/analytics
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/analytics_db?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      PORT: "8200"
+    ports:
+      - "8200:8200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  redis_data:
