@@ -1,12 +1,20 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+import uuid as uuid_module
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_user_optional
+from app.core.auth import current_user_optional, require_user
+from app.core.images import ImageRejected, TooLarge, process_image, read_limited
+from app.core.storage import get_store
+from app.models.image import ReportImage
+from app.models.report import Report
+from app.schemas.image import ImageUploadResponse
 from app.core.config import settings
-from app.core.rate_limit import rate_limit_writes
+from app.core.rate_limit import rate_limit_uploads, rate_limit_writes
 from app.models.user import User
 from app.core.security import require_admin
 from app.db.session import get_db
@@ -179,3 +187,61 @@ async def update_report_status(
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found.")
     return report
+
+
+@router.post(
+    "/{report_id}/images",
+    response_model=ImageUploadResponse,
+    status_code=201,
+    dependencies=[Depends(rate_limit_uploads)],
+)
+async def upload_report_image(
+    report_id: UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attach a photo to a report. Only the person who filed it (or an admin) may add photos.
+    The file is checked and re-encoded, so only a clean, bounded JPEG is ever stored."""
+    store = get_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="Photo uploads are not available right now.")
+
+    report = await db.get(Report, report_id)
+    # Same answer for "does not exist" and "not yours", so ids cannot be probed.
+    if report is None or (report.reporter_id != user.id and user.role != "admin"):
+        raise HTTPException(status_code=404, detail="Report not found.")
+
+    try:
+        raw = await read_limited(file, settings.MAX_UPLOAD_BYTES)
+        processed = await process_image(raw)
+    except TooLarge as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except ImageRejected as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Serialise uploads for this report so the per-report limit cannot be raced past.
+    await db.execute(select(Report.id).where(Report.id == report_id).with_for_update())
+    existing = (
+        await db.execute(select(func.count()).select_from(ReportImage).where(ReportImage.report_id == report_id))
+    ).scalar_one()
+    if existing >= settings.MAX_IMAGES_PER_REPORT:
+        raise HTTPException(status_code=409, detail=f"A report can have at most {settings.MAX_IMAGES_PER_REPORT} photos.")
+
+    image_id = uuid_module.uuid4()
+    key = f"reports/{report_id}/{image_id}.jpg"
+    await store.put(key, processed.data, processed.content_type)
+    db.add(
+        ReportImage(
+            id=image_id,
+            report_id=report_id,
+            uploader_id=user.id,
+            storage_key=key,
+            content_type=processed.content_type,
+            size_bytes=len(processed.data),
+            width=processed.width,
+            height=processed.height,
+        )
+    )
+    await db.commit()
+    return ImageUploadResponse(id=image_id, width=processed.width, height=processed.height)

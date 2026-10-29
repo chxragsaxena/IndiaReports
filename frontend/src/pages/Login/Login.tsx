@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { isAxiosError } from "axios";
 
 import { useAuth } from "../../auth/AuthContext";
 import Button from "../../components/UI/Button/Button";
@@ -33,8 +32,6 @@ function Login() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [busy, setBusy] = useState(false);
-    // True when the email has no account: lets us offer to create one right away.
-    const [noAccount, setNoAccount] = useState(false);
 
     if (user) return <Navigate to={next ?? HOME[user.role]} replace />;
 
@@ -62,7 +59,6 @@ function Login() {
             }
             navigate(next ?? HOME[signedIn.role], { replace: true });
         } catch (err) {
-            setNoAccount(isAxiosError(err) && err.response?.status === 404 && mode === "signin");
             setError(apiErrorMessage(err, "We could not sign you in. Please try again."));
         } finally {
             setBusy(false);
@@ -125,19 +121,6 @@ function Login() {
                     {error && (
                         <div className={styles.error} role="alert">
                             <p>{error}</p>
-                            {noAccount && portal === "citizen" && (
-                                <button
-                                    type="button"
-                                    className={styles.link}
-                                    onClick={() => {
-                                        setMode("signup"); // keeps the email and password already typed
-                                        setError("");
-                                        setNoAccount(false);
-                                    }}
-                                >
-                                    Create an account with this email
-                                </button>
-                            )}
                         </div>
                     )}
 

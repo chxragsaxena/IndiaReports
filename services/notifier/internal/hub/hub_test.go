@@ -113,3 +113,24 @@ func TestConnectionCap(t *testing.T) {
 		t.Fatalf("expected cap error, got %v", err)
 	}
 }
+
+func TestPublicViewHidesAIFindings(t *testing.T) {
+	ev := events.Event{
+		Type: events.TypeReportImageAnalyzed, ReportID: "r1", Latitude: 28.6, Longitude: 77.2,
+		Severity: "critical", Summary: "Exposed live wire near a school gate",
+	}
+	public := ev.Public()
+	if public.Severity != "" || public.Summary != "" {
+		t.Fatalf("AI findings survived Public(): %+v", public)
+	}
+	h := New(10)
+	c := newTestClient(h)
+	h.setViewport(c, BBox{MinLat: 28, MinLng: 76, MaxLat: 29, MaxLng: 78}, 12)
+	h.Broadcast(ev)
+	if len(c.send) == 1 {
+		msg := string(<-c.send)
+		if strings.Contains(msg, "Exposed live wire") || strings.Contains(msg, "critical") {
+			t.Fatalf("websocket payload leaked AI findings: %s", msg)
+		}
+	}
+}

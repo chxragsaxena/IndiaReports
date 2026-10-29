@@ -154,3 +154,78 @@
         grid-template-columns: 1fr;
     }
 }
+
+.photoHelp {
+    font-size: 0.85rem;
+    color: var(--text-3);
+}
+
+.photoGrid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.thumb {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+}
+
+.thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.removePhoto {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.75);
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.addPhoto {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text-2);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.addPhoto:hover {
+    background: var(--surface-2);
+}
+
+.addPhoto span:first-of-type {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.addPhoto input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}

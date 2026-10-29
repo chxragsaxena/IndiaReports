@@ -23,6 +23,9 @@ export interface AdminReport {
     escalated_at: string | null;
     assignee_name: string | null;
     assignee_role: string | null;
+    image_count: number;
+    ai_severity: Severity | null;
+    ai_pending: boolean;
 }
 
 export interface AdminReportPage {
@@ -56,4 +59,55 @@ export async function listAdminReports(filter: AdminFilter, before?: string | nu
 
 export async function updateStatus(id: string, status: ReportStatus): Promise<void> {
     await client.patch(`/reports/${encodeURIComponent(id)}/status`, { status });
+}
+
+export interface Findings {
+    summary: string;
+    issue_visible: boolean;
+    suggested_category: string;
+    category_matches_report: boolean;
+    severity: Severity;
+    hazards: string[];
+    recommended_action: string;
+    image_quality: string;
+    flags: string[];
+    confidence: number;
+}
+
+export type Severity = "low" | "medium" | "high" | "critical";
+
+export interface AdminImage {
+    id: string;
+    url: string;
+    width: number;
+    height: number;
+    status: "pending" | "analyzing" | "done" | "failed";
+    severity: Severity | null;
+    findings: Findings | null;
+    provider: string | null;
+    model: string | null;
+    error: string | null;
+    analyzed_at: string | null;
+}
+
+export interface AdminReportDetail {
+    id: string;
+    title: string;
+    description: string;
+    category: string;
+    status: ReportStatus;
+    address: string;
+    city: string;
+    district: string;
+    state: string;
+    pincode: string;
+    latitude: number;
+    longitude: number;
+    created_at: string | null;
+    images: AdminImage[];
+    analysis_enabled: boolean;
+}
+
+export async function getAdminReport(id: string, signal?: AbortSignal): Promise<AdminReportDetail> {
+    return (await client.get<AdminReportDetail>(`/admin/reports/${encodeURIComponent(id)}`, { signal })).data;
 }

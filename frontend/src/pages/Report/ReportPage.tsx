@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import Button from "../../components/UI/Button/Button";
 import { SelectField, TextArea, TextField } from "../../components/UI/Input/Input";
 import { useToast } from "../../components/UI/Toast/Toast";
-import { apiErrorMessage, createReport } from "../../services/reportService";
+import { PhotosUnavailableError, apiErrorMessage, createReport, uploadReportPhoto } from "../../services/reportService";
+import { MAX_PHOTOS, compressPhoto, photoProblem } from "../../utils/image";
 import { CATEGORIES } from "../../types/report";
 import type { Report } from "../../types/report";
 import { reverseGeocode } from "../../utils/geocode";
@@ -64,12 +65,37 @@ function ReportPage() {
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState<Report | null>(null);
     const [lookingUp, setLookingUp] = useState(false);
+    const [photos, setPhotos] = useState<File[]>([]);
+    const [uploadNote, setUploadNote] = useState("");
+    const [photoCount, setPhotoCount] = useState(0);
 
     // Fields the person edited by hand: geocoding must not overwrite them.
     const touched = useRef(new Set<string>());
     const geocodeRequest = useRef<AbortController | null>(null);
 
     useEffect(() => () => geocodeRequest.current?.abort(), []);
+
+    // Object URLs for the thumbnails; released when the photos change or the page closes.
+    const previews = useMemo(() => photos.map((p) => URL.createObjectURL(p)), [photos]);
+    useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+
+    function addPhotos(list: FileList | null) {
+        if (!list) return;
+        const next = [...photos];
+        for (const file of Array.from(list)) {
+            const problem = photoProblem(file);
+            if (problem) {
+                toast.show(problem, "error");
+                continue;
+            }
+            if (next.length >= MAX_PHOTOS) {
+                toast.show(`You can attach up to ${MAX_PHOTOS} photos.`, "info");
+                break;
+            }
+            next.push(file);
+        }
+        setPhotos(next);
+    }
 
     function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
         touched.current.add(key);
@@ -127,6 +153,25 @@ function ReportPage() {
                 state: form.state.trim(),
                 pincode: form.pincode.trim(),
             });
+            // The report is filed. Attach photos one at a time; a failure here must not undo it.
+            let attached = 0;
+            let failed = 0;
+            for (let i = 0; i < photos.length; i++) {
+                setUploadNote(`Uploading photo ${i + 1} of ${photos.length}...`);
+                try {
+                    await uploadReportPhoto(report.id, await compressPhoto(photos[i]));
+                    attached += 1;
+                } catch (err) {
+                    if (err instanceof PhotosUnavailableError) {
+                        toast.show("Photos cannot be uploaded right now, but your report was submitted.", "info");
+                        failed += photos.length - i;
+                        break;
+                    }
+                    failed += 1;
+                }
+            }
+            if (failed > 0 && attached > 0) toast.show(`${failed} photo${failed === 1 ? "" : "s"} could not be uploaded.`, "error");
+            setPhotoCount(attached);
             setSubmitted(report);
         } catch (err) {
             toast.show(apiErrorMessage(err, "We could not submit your report. Please try again."), "error");
@@ -145,7 +190,7 @@ function ReportPage() {
                     <h1>Thank you, your report is in</h1>
                     <p>
                         {submitted.assigned_at
-                            ? "It has been sent to the officer responsible for this area. If nobody acknowledges it, it is escalated to the administrator automatically."
+                            ? `It has been sent to the officer responsible for this area${photoCount > 0 ? `, with ${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""}. If nobody acknowledges it, it is escalated to the administrator automatically.`
                             : "It is now on the map for everyone to see."}
                     </p>
                     <div className={styles.doneActions}>
@@ -159,6 +204,8 @@ function ReportPage() {
                             variant="secondary"
                             onClick={() => {
                                 touched.current.clear();
+                                setPhotos([]);
+                                setUploadNote("");
                                 setForm(EMPTY);
                                 setSubmitted(null);
                             }}
@@ -275,9 +322,47 @@ function ReportPage() {
                     </div>
                 </fieldset>
 
+                <fieldset className={styles.section}>
+                    <legend>Photos (optional)</legend>
+                    <p className={styles.photoHelp}>
+                        A clear photo helps the right person act faster. Up to {MAX_PHOTOS} photos. They are shown to administrators only, and the
+                        location stored in the photo is removed.
+                    </p>
+                    <div className={styles.photoGrid}>
+                        {previews.map((src, i) => (
+                            <div key={src} className={styles.thumb}>
+                                <img src={src} alt={`Attached photo ${i + 1}`} />
+                                <button
+                                    type="button"
+                                    className={styles.removePhoto}
+                                    aria-label={`Remove photo ${i + 1}`}
+                                    onClick={() => setPhotos(photos.filter((_, n) => n !== i))}
+                                >
+                                    &times;
+                                </button>
+                            </div>
+                        ))}
+                        {photos.length < MAX_PHOTOS && (
+                            <label className={styles.addPhoto}>
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    multiple
+                                    onChange={(e) => {
+                                        addPhotos(e.target.files);
+                                        e.target.value = ""; // allow picking the same file again
+                                    }}
+                                />
+                                <span aria-hidden="true">+</span>
+                                <span>Add photo</span>
+                            </label>
+                        )}
+                    </div>
+                </fieldset>
+
                 <div className={styles.submitRow}>
                     <Button type="submit" loading={submitting}>
-                        Submit report
+                        {submitting && uploadNote ? uploadNote : "Submit report"}
                     </Button>
                     <Link to="/" className={styles.cancel}>
                         Cancel

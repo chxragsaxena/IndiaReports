@@ -30,6 +30,42 @@ class Settings(BaseSettings):
     # Off by default so existing clients keep working; turn it on in production.
     REQUIRE_LOGIN_TO_REPORT: bool = False
 
+    # ---- Photos -----------------------------------------------------------------
+    # S3-compatible object storage (MinIO locally, S3 / Cloudflare R2 in production).
+    # Leave S3_ENDPOINT_URL unset to turn photo uploads off.
+    S3_ENDPOINT_URL: str | None = None
+    # Address a browser can reach, used in the short-lived links admins view photos
+    # through. Defaults to S3_ENDPOINT_URL (differs inside docker networks).
+    S3_PUBLIC_URL: str | None = None
+    S3_BUCKET: str = "indiareports-photos"
+    S3_ACCESS_KEY: str | None = None
+    S3_SECRET_KEY: str | None = None
+    S3_REGION: str = "auto"
+
+    MAX_IMAGES_PER_REPORT: int = 3
+    MAX_UPLOAD_BYTES: int = 8 * 1024 * 1024
+    UPLOAD_RATE_LIMIT_PER_MINUTE: int = 20
+    IMAGE_URL_TTL_SECONDS: int = 600
+
+    # ---- AI photo analysis (open-source vision model, run by you) -----------------
+    # "openai_compatible" talks to any server that speaks the OpenAI chat API with image
+    # input: Ollama, vLLM, llama.cpp server, LM Studio. "mock" gives clearly labelled demo
+    # output with no model at all. "off" disables analysis. Empty means: openai_compatible
+    # when ANALYSIS_BASE_URL is set, otherwise off.
+    ANALYSIS_PROVIDER: str = ""
+    # Ollama on the host machine, as seen from inside a docker container.
+    ANALYSIS_BASE_URL: str | None = None
+    ANALYSIS_API_KEY: str | None = None  # only if your server requires one
+    # Qwen3-VL is among the strongest open-weight vision families. The small size is what a
+    # laptop can run; use a larger one (for example the 32B) on a GPU server for real use.
+    ANALYSIS_MODEL: str = "qwen3-vl:4b"
+    # Local CPU inference can take a minute or more per photo.
+    ANALYSIS_TIMEOUT_SECONDS: float = 240.0
+    ANALYSIS_CONCURRENCY: int = 1
+    # Hard cap on analyses per day, so a spike (or abuse) cannot exhaust your GPU.
+    ANALYSIS_MAX_PER_DAY: int = 2000
+    ANALYSIS_MAX_ATTEMPTS: int = 3
+
     CORS_ORIGINS: str = "*"
 
     # Connection budget: workers x instances x (DB_POOL_SIZE + DB_MAX_OVERFLOW) must stay

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -8,22 +9,48 @@ from sqlalchemy.exc import TimeoutError as SATimeoutError
 from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
+from app.analysis.analyzer import build_analyzer
 from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.redis import close_redis, get_redis
+from app.core.storage import get_store
 from app.db.session import engine
+from app.events.analysis import run_analysis
 from app.events.escalation import run_escalation
 from app.events.outbox import run_relay
 from app.events.rollup import run_rollup
 
 
+logger = logging.getLogger(__name__)
+
+async def ensure_photo_bucket() -> None:
+    """Create the photo bucket once object storage is reachable. Storage may start after this
+    service, so keep trying for a while instead of failing startup."""
+    store = get_store()
+    if store is None:
+        return
+    for attempt in range(30):
+        try:
+            await store.ensure_ready()
+            return
+        except Exception:
+            if attempt == 29:
+                logger.warning("photo storage is configured but never became reachable", exc_info=True)
+                return
+            await asyncio.sleep(2)
+
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     stop = asyncio.Event()
+
     tasks = [
+        asyncio.create_task(ensure_photo_bucket()),
         asyncio.create_task(run_relay(stop)),
         asyncio.create_task(run_escalation(stop)),
         asyncio.create_task(run_rollup(stop)),
+        asyncio.create_task(run_analysis(stop, build_analyzer())),
     ]
     try:
         yield

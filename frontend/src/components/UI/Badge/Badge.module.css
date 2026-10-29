@@ -37,3 +37,23 @@
     background: var(--surface-2);
     font-weight: 500;
 }
+
+.sev_low {
+    color: #166534;
+    background: var(--resolved-soft);
+}
+
+.sev_medium {
+    color: #92400e;
+    background: var(--progress-soft);
+}
+
+.sev_high {
+    color: #9a3412;
+    background: #ffedd5;
+}
+
+.sev_critical {
+    color: #fff;
+    background: var(--open);
+}

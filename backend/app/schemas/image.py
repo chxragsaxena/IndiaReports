@@ -1,0 +1,42 @@
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel
+
+
+class ImageUploadResponse(BaseModel):
+    id: UUID
+    width: int
+    height: int
+
+
+class AdminImage(BaseModel):
+    id: UUID
+    url: str  # short-lived link to the photo
+    width: int
+    height: int
+    status: str  # pending | analyzing | done | failed
+    severity: str | None = None
+    findings: dict | None = None
+    provider: str | None = None
+    model: str | None = None
+    error: str | None = None
+    analyzed_at: datetime | None = None
+
+
+class AdminReportDetail(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    category: str
+    status: str
+    address: str
+    city: str
+    district: str
+    state: str
+    pincode: str
+    latitude: float
+    longitude: float
+    created_at: datetime | None = None
+    images: list[AdminImage]
+    analysis_enabled: bool

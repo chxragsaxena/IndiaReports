@@ -43,6 +43,19 @@ services:
       ESCALATION_AFTER_SECONDS: ${ESCALATION_AFTER_SECONDS:-604800}
       ESCALATION_CHECK_SECONDS: ${ESCALATION_CHECK_SECONDS:-60}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      # Photos: S3-compatible storage (MinIO below). The public URL is what a browser
+      # uses to view a photo, so it must be the host-mapped port.
+      S3_ENDPOINT_URL: http://storage:8000
+      S3_PUBLIC_URL: http://localhost:${STORAGE_PORT:-9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-devaccesskey}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-devsecretkey123}
+      S3_REGION: us-east-1
+      # AI photo analysis with an open-source vision model. Empty provider and base URL
+      # means analysis is off (photos are still stored). See README, "Photos and AI analysis".
+      ANALYSIS_PROVIDER: ${ANALYSIS_PROVIDER:-}
+      ANALYSIS_BASE_URL: ${ANALYSIS_BASE_URL:-}
+      ANALYSIS_MODEL: ${ANALYSIS_MODEL:-qwen3-vl:4b}
+      ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
     ports:
       - "${REPORT_PORT:-8000}:8000"
     restart: on-failure
@@ -51,6 +64,36 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage:
+        condition: service_started
+
+  storage:
+    # Open-source S3-compatible server for local use (in production, point the S3_*
+    # settings at real S3 or Cloudflare R2 instead).
+    image: zenko/cloudserver:latest
+    environment:
+      SCALITY_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-devaccesskey}
+      SCALITY_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-devsecretkey123}
+      REMOTE_MANAGEMENT_DISABLE: "1"
+      # Host names the server answers to: the docker name and what a browser uses.
+      ENDPOINT: storage,localhost
+    ports:
+      - "${STORAGE_PORT:-9000}:8000"
+    volumes:
+      - storage_data:/usr/src/app/localData
+      - storage_meta:/usr/src/app/localMetadata
+
+  # Optional: runs the open-source vision model locally. Start with
+  #   docker compose --profile ai up -d ollama
+  # then `docker compose exec ollama ollama pull qwen3-vl:4b` and set
+  # ANALYSIS_BASE_URL=http://ollama:11434/v1. Needs several GB of RAM for Docker.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
 
   notifier:
     build: ./services/notifier
@@ -86,3 +129,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  storage_data:
+  storage_meta:
+  ollama_data:

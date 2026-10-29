@@ -1,8 +1,10 @@
 import logging
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 
+from app.core.auth import require_user
 from app.core.config import settings
+from app.models.user import User
 from app.core.redis import get_redis
 
 logger = logging.getLogger(__name__)
@@ -51,3 +53,20 @@ async def rate_limit_auth(request: Request) -> None:
         return
     if count > settings.AUTH_RATE_LIMIT_PER_MINUTE:
         raise HTTPException(status_code=429, detail="Too many attempts. Please wait a minute and try again.")
+
+
+async def rate_limit_uploads(user: User = Depends(require_user)) -> None:
+    """Per-person cap on photo uploads (each one costs storage and a model run)."""
+    client = get_redis()
+    if client is None:
+        return
+    key = f"ratelimit:upload:{user.id}"
+    try:
+        count = await client.incr(key)
+        if count == 1:
+            await client.expire(key, 60)
+    except Exception:
+        logger.warning("upload rate limiter unavailable, allowing request", exc_info=True)
+        return
+    if count > settings.UPLOAD_RATE_LIMIT_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Too many uploads. Please wait a minute and try again.")

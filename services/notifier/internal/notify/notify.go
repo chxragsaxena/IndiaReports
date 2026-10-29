@@ -123,6 +123,11 @@ func DirectMessage(ev events.Event, appURL string) string {
 			strings.TrimRight(appURL, "/"), ev.ReportID, ev.Recipient.AckToken)
 	}
 
+	if ev.Type == events.TypeReportImageAnalyzed {
+		return fmt.Sprintf("AI photo check: %s severity on a %s report in %s.\n%s\n%s\nReview: %s/admin",
+			strings.ToUpper(ev.Severity), ev.Category, where, ev.Title, ev.Summary, strings.TrimRight(appURL, "/"))
+	}
+
 	if ev.Type == events.TypeReportEscalated {
 		prev := ev.PreviousAssignee
 		if prev == "" {
@@ -157,8 +162,17 @@ func (d *Dispatcher) Handle(ctx context.Context, ev events.Event) error {
 	}
 	// Both paths always run; errors.Join keeps the entry pending if either failed.
 	directErr := d.deliverDirect(ctx, ev)
-	subsErr := d.notifySubscribers(ctx, ev)
+	var subsErr error
+	if NotifiesSubscribers(ev.Type) {
+		subsErr = d.notifySubscribers(ctx, ev)
+	}
 	return errors.Join(directErr, subsErr)
+}
+
+// NotifiesSubscribers says which events go to people who subscribed to an area. Escalations
+// and AI photo findings are internal: they go only to the named recipient, never to subscribers.
+func NotifiesSubscribers(eventType string) bool {
+	return eventType == events.TypeReportCreated || eventType == events.TypeReportStatusChanged
 }
 
 // deliverDirect messages the named person responsible for the report: the area's
@@ -167,7 +181,9 @@ func (d *Dispatcher) deliverDirect(ctx context.Context, ev events.Event) error {
 	if ev.Recipient == nil || ev.Recipient.ChatID == "" {
 		return nil
 	}
-	if ev.Type != events.TypeReportCreated && ev.Type != events.TypeReportEscalated {
+	switch ev.Type {
+	case events.TypeReportCreated, events.TypeReportEscalated, events.TypeReportImageAnalyzed:
+	default:
 		return nil
 	}
 	chatID := ev.Recipient.ChatID

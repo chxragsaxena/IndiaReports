@@ -90,7 +90,8 @@ func (c *Consumer) RunLive(ctx context.Context) {
 					c.log.Warn("skipping bad event", "err", err)
 					continue
 				}
-				if !ev.Historical {
+				// AI findings are for administrators only: never offered to map viewers.
+				if !ev.Historical && ev.Type != events.TypeReportImageAnalyzed {
 					c.hub.Broadcast(ev)
 				}
 			}

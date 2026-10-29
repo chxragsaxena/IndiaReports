@@ -81,3 +81,36 @@ func TestMessageForStatusChange(t *testing.T) {
 		t.Errorf("unexpected message: %s", got)
 	}
 }
+
+func TestAIPhotoAlertGoesToTheAdminWithoutAnAcknowledgeLink(t *testing.T) {
+	ev := events.Event{
+		Type: events.TypeReportImageAnalyzed, ReportID: "abc", Title: "Live wire down", Category: "Electricity",
+		City: "Pune", State: "Maharashtra", Severity: "critical", Summary: "A cable lies in standing water.",
+		Recipient: &events.Recipient{Name: "Admin", ChatID: "9"},
+	}
+	got := DirectMessage(ev, "https://example.org/")
+	for _, want := range []string{"CRITICAL", "Pune, Maharashtra", "A cable lies in standing water.", "https://example.org/admin"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("message %q missing %q", got, want)
+		}
+	}
+	if strings.Contains(got, "token=") || strings.Contains(got, "/ack") {
+		t.Errorf("an AI alert must not carry an acknowledge link: %s", got)
+	}
+}
+
+func TestOnlyCreatedAndStatusEventsReachAreaSubscribers(t *testing.T) {
+	for _, tc := range []struct {
+		eventType string
+		want      bool
+	}{
+		{events.TypeReportCreated, true},
+		{events.TypeReportStatusChanged, true},
+		{events.TypeReportEscalated, false},
+		{events.TypeReportImageAnalyzed, false},
+	} {
+		if got := NotifiesSubscribers(tc.eventType); got != tc.want {
+			t.Errorf("NotifiesSubscribers(%s) = %v, want %v", tc.eventType, got, tc.want)
+		}
+	}
+}

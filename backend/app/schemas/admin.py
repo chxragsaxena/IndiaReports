@@ -63,6 +63,9 @@ class AdminReportRow(BaseModel):
     escalated_at: datetime | None = None
     assignee_name: str | None = None
     assignee_role: str | None = None
+    image_count: int = 0
+    ai_severity: str | None = None  # the most serious finding across the photos
+    ai_pending: bool = False  # some photos are still waiting for analysis
 
 
 class AdminReportPage(BaseModel):

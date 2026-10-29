@@ -40,6 +40,10 @@ type Event struct {
 	Recipient        *Recipient `json:"recipient,omitempty"`
 	PreviousAssignee string     `json:"previous_assignee,omitempty"`
 	UnackHours       float64    `json:"unacknowledged_hours,omitempty"`
+
+	// Set on ReportImageAnalyzed. Private like the recipient: removed by Public().
+	Severity string `json:"severity,omitempty"`
+	Summary  string `json:"summary,omitempty"`
 }
 
 // Recipient is who must act on a report. AckToken is a bearer secret for the
@@ -52,12 +56,17 @@ type Recipient struct {
 	AckToken  string `json:"ack_token"`
 }
 
-const TypeReportEscalated = "ReportEscalated"
+const (
+	TypeReportEscalated = "ReportEscalated"
+	// AI findings about a photo: for administrators only, never shown on the public map.
+	TypeReportImageAnalyzed = "ReportImageAnalyzed"
+)
 
 // Public returns a copy that is safe to show to any map viewer.
 func (e Event) Public() Event {
 	e.Recipient = nil
 	e.PreviousAssignee = ""
+	e.Severity, e.Summary = "", ""
 	return e
 }
 

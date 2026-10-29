@@ -81,3 +81,20 @@ payload (covered by a test) and redacts tokens from logs.
 - `REQUIRE_LOGIN_TO_REPORT=true` refuses anonymous reports (off by default for compatibility; turn it on in production). Reports record `reporter_id` when signed in.
 
 Not built: email verification, password reset, "remember me", multi-factor sign-in, token revocation lists (disable the user instead), audit log of admin actions.
+
+## Photos and AI analysis
+- **Upload path:** only the person who filed a report (or an admin) can attach photos, max 3 per report, each at most 8 MB. The server decodes and
+  **re-encodes** every upload to a bounded JPEG, which drops scripts, malformed trailers and all EXIF metadata (including GPS and camera owner),
+  and refuses non-photos, animated images and decompression bombs. The browser also shrinks photos first (less data on slow networks).
+- **Storage:** private S3-compatible bucket; admins view photos through 10-minute signed links. Per-person upload rate limit.
+- **Analysis runs off the request path** (`app/events/analysis.py`), so uploads stay fast whatever the model does. Rows are claimed with `SKIP LOCKED`
+  (safe on many instances), failures retry with backoff, permanent failures stop, stale claims are released, and a daily cap (`ANALYSIS_MAX_PER_DAY`)
+  keeps a spike or abuse from exhausting the model server.
+- **The model is untrusted input too.** Report text and any text inside the photo can try to give it instructions; the prompt fences that text off, and
+  the answer is validated against a strict schema, bounded in length, and can only produce a severity label shown to staff plus, for serious findings,
+  a message to the admin. A small model can still be fooled, which is why findings are labelled assistive and a human decides.
+- **Findings are admin-only:** not in the public API, not in "My reports", and the `ReportImageAnalyzed` event is never pushed to the public WebSocket
+  or sent to area subscribers (tests cover each).
+
+Not built: virus scanning (re-encoding is the mitigation), automatic deletion of photos when a report is deleted or after a retention period,
+consent and retention policy for personal data in photos (worth reviewing against India's data protection law), on-device blurring of faces and number plates.

@@ -14,3 +14,14 @@ export function StatusBadge({ status }: { status: ReportStatus }) {
 export function Tag({ children }: { children: string }) {
     return <span className={`${styles.badge} ${styles.neutral}`}>{children}</span>;
 }
+
+const SEVERITY_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
+
+export function SeverityBadge({ severity, prefix }: { severity: string; prefix?: string }) {
+    return (
+        <span className={`${styles.badge} ${styles["sev_" + severity] ?? styles.neutral}`}>
+            {prefix ? `${prefix} ` : ""}
+            {SEVERITY_LABEL[severity] ?? severity}
+        </span>
+    );
+}

@@ -107,6 +107,11 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   flow was driven in a real browser (15 checks). A real bug was found and fixed on the way: the live-update hook could drop its viewport in dev (React double-mount race).
   Demo admin for local use only: admin@example.org / ChangeMe-Admin-123 (change or delete it; never deploy it).
 
+- Photos + AI analysis added (2026-10-29): upload with re-encoding, private storage, open-source vision model via an OpenAI-compatible server, admin drawer with findings.
+  83 backend tests, Go suites, and a real-browser run (compression, signed link, findings) pass. Verified with the fake model server and the labelled demo analyzer;
+  NOT yet run against a real local model (no Ollama installed, laptop has 7.7 GB RAM and no GPU). Two infrastructure surprises: MinIO no longer publishes free images
+  (switched to Zenko CloudServer), and that server needs its host names configured (`ENDPOINT`).
+
 ## Still open (owner decisions / not done)
 - Render/Vercel/Redis setup and env vars (see root README). Merge `microservices` into `main` only after the deploy is configured:
   the Render root dir for the backend is unchanged (`backend/`), but the database needs `alembic upgrade head` (and possibly `alembic stamp` first).

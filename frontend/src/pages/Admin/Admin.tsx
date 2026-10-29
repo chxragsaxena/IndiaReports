@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import Button from "../../components/UI/Button/Button";
 import Skeleton from "../../components/UI/Skeleton/Skeleton";
-import { StatusBadge, Tag } from "../../components/UI/Badge/Badge";
+import AdminReportDetail from "../../components/AdminReportDetail/AdminReportDetail";
+import { StatusBadge, SeverityBadge, Tag } from "../../components/UI/Badge/Badge";
 import { useToast } from "../../components/UI/Toast/Toast";
 import { ESCALATION_DAYS } from "../../config/api";
 import { useLiveSocket } from "../../hooks/useLiveSocket";
@@ -50,6 +51,7 @@ function Admin() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [officers, setOfficers] = useState<Officer[]>([]);
     const [reload, setReload] = useState(0);
+    const [openId, setOpenId] = useState<string | null>(null);
     const firstLoad = useRef(true);
 
     // Live updates: any new report or change reloads the list (the server throttles hints).
@@ -191,6 +193,18 @@ function Admin() {
                                             <span className={styles.meta}>
                                                 <Tag>{r.category}</Tag> {timeAgo(r.created_at, now)}
                                             </span>
+                                            <span className={styles.meta}>
+                                                <button className={styles.detailBtn} onClick={() => setOpenId(r.id)}>
+                                                    {r.image_count > 0
+                                                        ? `${r.image_count} photo${r.image_count === 1 ? "" : "s"}`
+                                                        : "Details"}
+                                                </button>
+                                                {r.ai_severity ? (
+                                                    <SeverityBadge severity={r.ai_severity} prefix="AI:" />
+                                                ) : r.ai_pending ? (
+                                                    <span className={styles.muted}>AI analysing...</span>
+                                                ) : null}
+                                            </span>
                                         </th>
                                         <td>{[r.city, r.state].filter(Boolean).join(", ")}</td>
                                         <td>
@@ -221,6 +235,8 @@ function Admin() {
                     </tbody>
                 </table>
             </div>
+
+            {openId && <AdminReportDetail key={openId} reportId={openId} onClose={() => setOpenId(null)} />}
 
             {next && (
                 <div className={styles.more}>

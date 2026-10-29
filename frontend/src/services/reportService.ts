@@ -129,3 +129,17 @@ export async function getMyReports(before?: string | null, signal?: AbortSignal)
     const response = await api.get<Report[]>("/me/reports", { signal, params: { limit: 50, before: before ?? undefined } });
     return response.data;
 }
+
+export class PhotosUnavailableError extends Error {}
+
+/** Attach one photo to a report you filed. Uploads can be slow on mobile, so allow a minute. */
+export async function uploadReportPhoto(reportId: string, photo: Blob): Promise<void> {
+    const form = new FormData();
+    form.append("file", photo, "photo.jpg");
+    try {
+        await api.post(`/reports/${encodeURIComponent(reportId)}/images`, form, { timeout: 60000 });
+    } catch (err) {
+        if (isAxiosError(err) && err.response?.status === 503) throw new PhotosUnavailableError();
+        throw err;
+    }
+}

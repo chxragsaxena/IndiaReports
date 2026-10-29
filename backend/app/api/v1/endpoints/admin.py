@@ -1,12 +1,18 @@
 import json
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analysis.analyzer import analysis_enabled
 from app.core.auth import hash_password
+from app.core.config import settings
+from app.core.storage import get_store
+from app.models.image import ReportImage
+from app.schemas.image import AdminImage, AdminReportDetail
 from app.core.security import require_admin
 from app.db.session import get_db
 from app.models.area import Area, Officer
@@ -21,6 +27,8 @@ from app.schemas.admin import (
     OfficerCreate,
     OfficerResponse,
 )
+
+SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -116,14 +124,36 @@ async def list_reports_for_admin(
 
     rows = (await db.execute(query)).all()
     page = rows[:limit]
-    items = [
-        AdminReportRow(
-            id=r.id, title=r.title, category=r.category, status=r.status, city=r.city, state=r.state, latitude=r.latitude, longitude=r.longitude,
-            created_at=r.created_at, assigned_at=r.assigned_at, acknowledged_at=r.acknowledged_at,
-            escalated_at=r.escalated_at, assignee_name=name, assignee_role=role,
+
+    # One extra query for this page's photos (at most a few dozen rows), not one per report.
+    photos: dict = {}
+    if page:
+        for report_id, severity, status_ in (
+            await db.execute(
+                select(ReportImage.report_id, ReportImage.severity, ReportImage.status).where(
+                    ReportImage.report_id.in_([r.id for r, _, _ in page])
+                )
+            )
+        ).all():
+            photos.setdefault(report_id, []).append((severity, status_))
+
+    def summarise(report_id):
+        images = photos.get(report_id, [])
+        worst = max((s for s, _ in images if s), key=lambda s: SEVERITY_RANK.get(s, 0), default=None)
+        return len(images), worst, any(st in ("pending", "analyzing") for _, st in images)
+
+    items = []
+    for r, name, role in page:
+        count, worst, pending = summarise(r.id)
+        items.append(
+            AdminReportRow(
+                id=r.id, title=r.title, category=r.category, status=r.status, city=r.city, state=r.state,
+                latitude=r.latitude, longitude=r.longitude,
+                created_at=r.created_at, assigned_at=r.assigned_at, acknowledged_at=r.acknowledged_at,
+                escalated_at=r.escalated_at, assignee_name=name, assignee_role=role,
+                image_count=count, ai_severity=worst, ai_pending=pending,
+            )
         )
-        for r, name, role in page
-    ]
     next_before = page[-1][0].created_at if len(rows) > limit and page else None
     return AdminReportPage(items=items, next_before=next_before)
 
@@ -143,3 +173,33 @@ async def create_user(body: AdminUserCreate, db: AsyncSession = Depends(get_db))
         raise HTTPException(409, "An account with this email already exists.")
     await db.refresh(user)
     return UserResponse(id=user.id, name=user.name, email=user.email, role=user.role)
+
+
+@router.get("/reports/{report_id}", response_model=AdminReportDetail)
+async def report_detail(report_id: UUID, db: AsyncSession = Depends(get_db)):
+    """One report with its photos and the AI findings about them. Photo links are short-lived."""
+    report = await db.get(Report, report_id)
+    if report is None:
+        raise HTTPException(404, "Report not found.")
+
+    images = (
+        await db.execute(select(ReportImage).where(ReportImage.report_id == report_id).order_by(ReportImage.created_at))
+    ).scalars().all()
+    store = get_store()
+
+    return AdminReportDetail(
+        id=report.id, title=report.title, description=report.description, category=report.category,
+        status=report.status, address=report.address, city=report.city, district=report.district,
+        state=report.state, pincode=report.pincode, latitude=report.latitude, longitude=report.longitude,
+        created_at=report.created_at,
+        analysis_enabled=analysis_enabled(),
+        images=[
+            AdminImage(
+                id=i.id,
+                url=await store.presign_get(i.storage_key, settings.IMAGE_URL_TTL_SECONDS) if store else "",
+                width=i.width, height=i.height, status=i.status, severity=i.severity, findings=i.analysis,
+                provider=i.analysis_provider, model=i.analysis_model, error=i.error, analyzed_at=i.analyzed_at,
+            )
+            for i in images
+        ],
+    )
