@@ -47,22 +47,27 @@ class Settings(BaseSettings):
     UPLOAD_RATE_LIMIT_PER_MINUTE: int = 20
     IMAGE_URL_TTL_SECONDS: int = 600
 
-    # ---- AI photo analysis (open-source vision model, run by you) -----------------
-    # "openai_compatible" talks to any server that speaks the OpenAI chat API with image
-    # input: Ollama, vLLM, llama.cpp server, LM Studio. "mock" gives clearly labelled demo
-    # output with no model at all. "off" disables analysis. Empty means: openai_compatible
-    # when ANALYSIS_BASE_URL is set, otherwise off.
+    # ---- AI photo analysis (open-weight vision model) ------------------------------
+    # Providers:
+    #   "groq"              hosted open-weight models through Groq's OpenAI-compatible API
+    #                       (same GROQ_API_KEY as PullWise). Photos are sent to Groq.
+    #   "openai_compatible" a server you run: Ollama, vLLM, llama.cpp, LM Studio. Photos
+    #                       stay on your infrastructure.
+    #   "mock"              clearly labelled demo output with no model at all.
+    #   "off"               no analysis.
+    # Empty means: openai_compatible if ANALYSIS_BASE_URL is set, else groq if GROQ_API_KEY
+    # is set, else off.
     ANALYSIS_PROVIDER: str = ""
-    # Ollama on the host machine, as seen from inside a docker container.
-    ANALYSIS_BASE_URL: str | None = None
-    ANALYSIS_API_KEY: str | None = None  # only if your server requires one
-    # Qwen3-VL is among the strongest open-weight vision families. The small size is what a
-    # laptop can run; use a larger one (for example the 32B) on a GPU server for real use.
-    ANALYSIS_MODEL: str = "qwen3-vl:4b"
-    # Local CPU inference can take a minute or more per photo.
+    GROQ_API_KEY: str | None = None
+    ANALYSIS_BASE_URL: str | None = None  # for openai_compatible (Ollama on the host, vLLM...)
+    ANALYSIS_API_KEY: str | None = None  # only if your own server requires one
+    # Empty picks a default that can read images: a Llama 4 Scout on Groq, a Qwen3-VL on
+    # Ollama. Text-only models (for example gpt-oss or llama3) cannot analyse photos.
+    ANALYSIS_MODEL: str = ""
+    # Local CPU inference can take a minute or more per photo; hosted answers take seconds.
     ANALYSIS_TIMEOUT_SECONDS: float = 240.0
     ANALYSIS_CONCURRENCY: int = 1
-    # Hard cap on analyses per day, so a spike (or abuse) cannot exhaust your GPU.
+    # Hard cap on analyses per day, so a spike (or abuse) cannot exhaust your quota or GPU.
     ANALYSIS_MAX_PER_DAY: int = 2000
     ANALYSIS_MAX_ATTEMPTS: int = 3
 

@@ -15,6 +15,7 @@ ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 MAX_PIXELS = 40_000_000  # refuses decompression bombs before the image is decoded
 MAX_EDGE = 2048
 MIN_EDGE = 64
+MAX_STORED_BYTES = 2_500_000  # keeps the base64 form well under a 4 MB hosted-model limit
 
 
 class ImageRejected(Exception):
@@ -51,9 +52,15 @@ def _process(raw: bytes) -> ProcessedImage:
     image = image.convert("RGB")  # drops alpha and palettes
     image.thumbnail((MAX_EDGE, MAX_EDGE))
 
-    out = io.BytesIO()
-    image.save(out, "JPEG", quality=85, optimize=True)  # a fresh file: no metadata carried over
-    return ProcessedImage(out.getvalue(), "image/jpeg", image.width, image.height)
+    # A fresh file: no metadata carried over. Noisy photos can stay large even at 2048 px, and
+    # hosted vision APIs cap base64 images at about 4 MB, so lower the quality until it fits.
+    quality = 85
+    while True:
+        out = io.BytesIO()
+        image.save(out, "JPEG", quality=quality, optimize=True)
+        if out.tell() <= MAX_STORED_BYTES or quality <= 40:
+            return ProcessedImage(out.getvalue(), "image/jpeg", image.width, image.height)
+        quality -= 15
 
 
 async def process_image(raw: bytes) -> ProcessedImage:

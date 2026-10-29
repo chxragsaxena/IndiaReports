@@ -55,30 +55,41 @@ docker compose run --rm --entrypoint python report-service -m scripts.create_adm
 Then sign in on the **Administrator** tab. Set `JWT_SECRET` to a long random value and `REQUIRE_LOGIN_TO_REPORT=true` in production.
 
 ## Photos and AI analysis
-Copy `.env.example` to `.env` to see every setting. Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
-An open-source vision model looks at each photo and reports findings to the administrator (what it shows, severity, hazards, whether the category fits,
+Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
+An open-weight vision model looks at each photo and reports findings to the administrator (what it shows, severity, hazards, whether the category fits,
 a suggested action). Serious findings (high or critical severity, or inappropriate content) also message the admin on Telegram.
+Copy `.env.example` to `.env` to see every setting.
 
-**Run the model yourself.** The service talks to any server that speaks the OpenAI chat API with image input (Ollama, vLLM, llama.cpp, LM Studio),
-so photos never leave your infrastructure and there is no per-image fee. Configure it with `ANALYSIS_BASE_URL` and `ANALYSIS_MODEL`.
+**Two ways to run the model** (both use the OpenAI-compatible chat API, as PullWise does):
 
-| Where | What to run | Notes |
+| | Groq (hosted) | Your own server (Ollama, vLLM, llama.cpp) |
 |---|---|---|
-| A laptop (CPU only, about 8 GB RAM) | Ollama with a small Qwen3-VL (for example `qwen3-vl:2b` or `qwen3-vl:4b`) | Works for demos but is slow (a minute or more per photo). Give Docker at least 6 GB if you use the bundled `ollama` container. |
-| Production | vLLM on a GPU server with a larger Qwen3-VL (for example the 32B) | Much better quality. Only `ANALYSIS_BASE_URL` and `ANALYSIS_MODEL` change. |
+| Setup | Set `GROQ_API_KEY` (free key at console.groq.com/keys, the same one PullWise uses) | Set `ANALYSIS_BASE_URL` (and `ANALYSIS_MODEL`) |
+| Default model | `meta-llama/llama-4-scout-17b-16e-instruct`, an open-weight Llama 4 that accepts images | `qwen3-vl:4b` (Qwen3-VL is among the strongest open vision families) |
+| Hardware | none; answers in seconds | a laptop can run a small one slowly; a GPU server gives real quality |
+| **Where photos go** | **to Groq's servers** | **stay on your infrastructure** |
 
-Local example with the bundled container (needs several GB of RAM and a multi-GB download):
+**Privacy: with Groq, citizens' photos leave your infrastructure.** Check Groq's data terms for the plan you use, and tell your users. If photos must stay with you, use your own server.
+Remove people and number plates where you can; the model is also asked to flag them.
+
+**The model must be able to read images.** Text-only models, including `openai/gpt-oss-120b` (PullWise's default) and `llama3`, cannot analyse photos.
+Override with `ANALYSIS_MODEL` if Groq or your server offers a better vision model; exact names change over time, so check the provider's model list.
+
+Local Ollama example, using the bundled container (a multi-GB download, and Docker needs several GB of RAM):
 ```
 docker compose --profile ai up -d ollama
 docker compose exec ollama ollama pull qwen3-vl:2b
 # in .env:   ANALYSIS_BASE_URL=http://ollama:11434/v1   ANALYSIS_MODEL=qwen3-vl:2b
 docker compose up -d report-service
 ```
-Check the model name against the Ollama library or the model card; `ollama pull` fails clearly if a tag does not exist.
-Without a model, `ANALYSIS_PROVIDER=mock` shows the whole flow with clearly labelled demo findings (and never messages anyone); leave it empty to turn analysis off.
+Without any model, `ANALYSIS_PROVIDER=mock` shows the whole flow with clearly labelled demo findings (and never messages anyone); leave everything unset to turn analysis off.
+
+**Reliability (the same habits as PullWise):** strict JSON-schema output with a fallback for servers that cannot enforce it, one repair attempt when the answer is invalid,
+a check on why the model stopped, and rate-limit (429) handling that waits for the time the server asks (capped at 30 s, two retries) before leaving the photo for a later retry.
+A daily cap (`ANALYSIS_MAX_PER_DAY`) protects your free-tier quota.
 
 **Photo storage** is any S3-compatible service: the compose file runs an open-source one for local use; in production set `S3_ENDPOINT_URL`, `S3_BUCKET`,
 `S3_ACCESS_KEY`, `S3_SECRET_KEY` (and `S3_PUBLIC_URL` if browsers reach it at a different address) for S3 or Cloudflare R2. Leave `S3_ENDPOINT_URL` unset to turn uploads off.
 
-**Treat findings as assistive.** Small open models are far weaker than frontier ones, and nobody has measured this model's accuracy on Indian civic photos.
+**Treat findings as assistive.** Open models are weaker than the best frontier models, and nobody has measured this one's accuracy on Indian civic photos.
 Before letting severity drive alerts in production, collect a set of real photos with known answers and check the model against it.

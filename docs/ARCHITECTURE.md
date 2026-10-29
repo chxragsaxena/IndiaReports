@@ -87,6 +87,7 @@ Not built: email verification, password reset, "remember me", multi-factor sign-
   **re-encodes** every upload to a bounded JPEG, which drops scripts, malformed trailers and all EXIF metadata (including GPS and camera owner),
   and refuses non-photos, animated images and decompression bombs. The browser also shrinks photos first (less data on slow networks).
 - **Storage:** private S3-compatible bucket; admins view photos through 10-minute signed links. Per-person upload rate limit.
+- **Where photos go:** with a self-run model (Ollama, vLLM) they never leave your infrastructure. With Groq they are sent to Groq for analysis, which is a privacy decision to make deliberately.
 - **Analysis runs off the request path** (`app/events/analysis.py`), so uploads stay fast whatever the model does. Rows are claimed with `SKIP LOCKED`
   (safe on many instances), failures retry with backoff, permanent failures stop, stale claims are released, and a daily cap (`ANALYSIS_MAX_PER_DAY`)
   keeps a spike or abuse from exhausting the model server.

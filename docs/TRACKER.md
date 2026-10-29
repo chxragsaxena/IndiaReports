@@ -112,6 +112,11 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   NOT yet run against a real local model (no Ollama installed, laptop has 7.7 GB RAM and no GPU). Two infrastructure surprises: MinIO no longer publishes free images
   (switched to Zenko CloudServer), and that server needs its host names configured (`ENDPOINT`).
 
+- Photo analysis re-based on the PullWise pattern (2026-10-29): Groq (hosted open-weight models, GROQ_API_KEY) or a self-run Ollama/vLLM server over the OpenAI-compatible API,
+  strict JSON schema, finish_reason checks, 429 handling (Retry-After, 30 s cap, 2 retries, injectable sleep). 94 backend tests pass. NOT yet run against live Groq (needs the key).
+  Default Groq model is meta-llama/llama-4-scout-17b-16e-instruct (vision-capable per Groq docs seen via secondary sources); PullWise gpt-oss-120b is text-only.
+  Privacy note recorded: with Groq, photos leave our infrastructure.
+
 ## Still open (owner decisions / not done)
 - Render/Vercel/Redis setup and env vars (see root README). Merge `microservices` into `main` only after the deploy is configured:
   the Render root dir for the backend is unchanged (`backend/`), but the database needs `alembic upgrade head` (and possibly `alembic stamp` first).

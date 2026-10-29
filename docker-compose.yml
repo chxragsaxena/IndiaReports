@@ -53,8 +53,9 @@ services:
       # AI photo analysis with an open-source vision model. Empty provider and base URL
       # means analysis is off (photos are still stored). See README, "Photos and AI analysis".
       ANALYSIS_PROVIDER: ${ANALYSIS_PROVIDER:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
       ANALYSIS_BASE_URL: ${ANALYSIS_BASE_URL:-}
-      ANALYSIS_MODEL: ${ANALYSIS_MODEL:-qwen3-vl:4b}
+      ANALYSIS_MODEL: ${ANALYSIS_MODEL:-}
       ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
     ports:
       - "${REPORT_PORT:-8000}:8000"

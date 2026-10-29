@@ -1,19 +1,22 @@
 """Photo analysis: turns one report photo into structured findings for administrators.
 
-The model is an open-source vision-language model that you run yourself, reached through
-the OpenAI-compatible chat API that Ollama, vLLM and llama.cpp all expose. Photos of
-residents never leave your infrastructure, and there is no per-image fee.
+The model is an open-weight vision-language model reached through the OpenAI-compatible chat
+API, the same style PullWise uses for its AI pass. Two ways to run it:
+  * groq: hosted open-weight models on Groq (GROQ_API_KEY). Nothing to run locally, answers in
+    seconds. Photos are sent to Groq.
+  * openai_compatible: a server you run (Ollama, vLLM, llama.cpp). Photos stay on your side.
 
-Two implementations share one interface:
-  * OpenAICompatibleAnalyzer: asks the model for JSON that matches the findings schema.
-  * MockAnalyzer: deterministic, clearly labelled demo output for running without a model.
+Mirrors PullWise's reliability habits: strict JSON-schema output, a check on the finish reason,
+and rate-limit (429) handling that waits for the time the server asks, up to a cap.
 """
 
+import asyncio
 import base64
 import hashlib
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -25,6 +28,16 @@ from app.core.config import settings
 from app.models.enums import ReportCategory
 
 logger = logging.getLogger(__name__)
+
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+# An open-weight Llama 4 model that accepts images (text-only models such as gpt-oss cannot).
+GROQ_DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+OLLAMA_DEFAULT_MODEL = "qwen3-vl:4b"
+
+# Rate limits: wait as long as the server asks, but never longer than this, and only twice.
+MAX_RATE_LIMIT_WAIT = 30.0
+MAX_RATE_LIMIT_RETRIES = 2
+_RETRY_IN_MESSAGE = re.compile(r"try again in ([0-9.]+)s", re.IGNORECASE)
 
 
 class AnalysisError(Exception):
@@ -111,49 +124,136 @@ def parse_findings(text: str) -> RawFindings:
         raise ValueError(problems) from e
 
 
-class OpenAICompatibleAnalyzer:
-    provider = "openai_compatible"
+def strict_schema() -> dict:
+    """The findings schema in the form strict structured-output servers accept: every property
+    required, no extra properties, no decorative keywords."""
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
-        self.model = settings.ANALYSIS_MODEL
-        base = (settings.ANALYSIS_BASE_URL or "").rstrip("/")
-        headers = {"Authorization": f"Bearer {settings.ANALYSIS_API_KEY}"} if settings.ANALYSIS_API_KEY else {}
+    def tidy(node):
+        if isinstance(node, dict):
+            node = {k: tidy(v) for k, v in node.items() if k not in ("title", "default")}
+            if node.get("type") == "object":
+                node["additionalProperties"] = False
+                node["required"] = list(node.get("properties", {}))
+            return node
+        if isinstance(node, list):
+            return [tidy(v) for v in node]
+        return node
+
+    return tidy(RawFindings.model_json_schema())
+
+
+def retry_delay(headers: httpx.Headers, message: str) -> float:
+    """How long the server asks us to wait: the Retry-After header, else the message text."""
+    try:
+        seconds = float(headers.get("Retry-After", ""))
+        if seconds > 0:
+            return seconds + 0.25
+    except ValueError:
+        pass
+    match = _RETRY_IN_MESSAGE.search(message or "")
+    if match:
+        try:
+            return float(match.group(1)) + 0.25
+        except ValueError:
+            pass
+    return 5.0
+
+
+def _api_error(response: httpx.Response) -> tuple[str, str]:
+    """(type, message) from an OpenAI-style error body; empty strings if it is not one."""
+    try:
+        err = response.json().get("error", {})
+        return str(err.get("type") or ""), str(err.get("message") or "")
+    except (ValueError, AttributeError):
+        return "", ""
+
+
+class _SchemaUnsupported(Exception):
+    pass
+
+
+class OpenAICompatibleAnalyzer:
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        *,
+        provider: str = "openai_compatible",
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        strict: bool = False,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
+        self.provider = provider
+        self.model = model or settings.ANALYSIS_MODEL or OLLAMA_DEFAULT_MODEL
+        self._strict = strict
+        self._sleep = sleep
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = client or httpx.AsyncClient(
-            base_url=base, headers=headers, timeout=httpx.Timeout(settings.ANALYSIS_TIMEOUT_SECONDS, connect=10.0)
+            base_url=(base_url or "").rstrip("/"),
+            headers=headers,
+            timeout=httpx.Timeout(settings.ANALYSIS_TIMEOUT_SECONDS, connect=10.0),
         )
+
+    async def _post(self, payload: dict) -> httpx.Response:
+        """One request, waiting out rate limits (429) like PullWise does."""
+        for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+            try:
+                response = await self._client.post("/chat/completions", json=payload)
+            except (httpx.TimeoutException, httpx.TransportError):
+                raise AnalysisError("The vision model server was unreachable or too slow; will retry.", retryable=True)
+            if response.status_code != 429:
+                return response
+            _, message = _api_error(response)
+            wait = retry_delay(response.headers, message)
+            if attempt >= MAX_RATE_LIMIT_RETRIES or wait > MAX_RATE_LIMIT_WAIT:
+                raise AnalysisError("The vision model is rate limited right now; will retry later.", retryable=True)
+            await self._sleep(wait)
+        raise AnalysisError("rate limited", retryable=True)  # pragma: no cover
 
     async def _complete(self, messages: list[dict], structured: bool) -> str:
         payload: dict = {
             "model": self.model,
             "messages": messages,
-            "temperature": 0.1,  # we want a stable assessment, not creativity
+            "temperature": 0.1,  # a stable assessment, not creativity
             "max_tokens": 1200,
         }
         if structured:
             payload["response_format"] = {
                 "type": "json_schema",
-                "json_schema": {"name": "findings", "schema": RawFindings.model_json_schema()},
+                "json_schema": {"name": "findings", "strict": self._strict, "schema": strict_schema()},
             }
-        try:
-            response = await self._client.post("/chat/completions", json=payload)
-        except (httpx.TimeoutException, httpx.TransportError):
-            raise AnalysisError("The vision model server was unreachable or too slow; will retry.", retryable=True)
+        response = await self._post(payload)
 
         if response.status_code == 400 and structured:
             raise _SchemaUnsupported()
+        error_type, error_message = _api_error(response)
+        detail = f": {error_type} {error_message}".rstrip()[:240] if (error_type or error_message) else ""
         if response.status_code in (401, 403, 404):
             # A wrong key, model name or address: retrying the same call cannot fix it.
             raise AnalysisError(
-                f"The vision model server rejected the request ({response.status_code}). Check ANALYSIS_MODEL and ANALYSIS_BASE_URL.",
+                f"The vision model server rejected the request ({response.status_code}{detail}). "
+                "Check the API key, ANALYSIS_MODEL and ANALYSIS_BASE_URL.",
                 retryable=False,
             )
         if response.status_code >= 400:
-            raise AnalysisError(f"The vision model server returned an error ({response.status_code}).",
-                                retryable=response.status_code >= 500 or response.status_code == 429)
+            raise AnalysisError(
+                f"The vision model server returned an error ({response.status_code}{detail}).",
+                retryable=response.status_code >= 500,
+            )
+
         try:
-            return response.json()["choices"][0]["message"]["content"] or ""
-        except (KeyError, IndexError, ValueError):
+            choice = response.json()["choices"][0]
+            text = choice["message"]["content"] or ""
+        except (KeyError, IndexError, ValueError, TypeError):
             raise AnalysisError("The vision model server sent a response this service could not read.", retryable=True)
+
+        finish = choice.get("finish_reason")
+        if finish == "content_filter":
+            raise AnalysisError("The model filtered its answer for this photo.", retryable=False)
+        if finish == "length":
+            raise AnalysisError("The model's answer was cut off before it finished.", retryable=True)
+        return text
 
     async def analyze(self, image: bytes, media_type: str, context: ReportContext) -> Findings:
         data_url = f"data:{media_type};base64,{base64.standard_b64encode(image).decode('ascii')}"
@@ -188,10 +288,6 @@ class OpenAICompatibleAnalyzer:
         raise AnalysisError("The model did not produce usable findings.", retryable=True)  # pragma: no cover
 
 
-class _SchemaUnsupported(Exception):
-    pass
-
-
 class MockAnalyzer:
     """Deterministic stand-in so the whole flow can be demonstrated without a model.
     Every result says it is demo output; nothing here looks at the photo."""
@@ -211,26 +307,52 @@ class MockAnalyzer:
             category_matches_report=suggested == context.category,
             severity=severity,
             hazards=["Sample hazard shown only in demo mode"] if severity in ("high", "critical") else [],
-            recommended_action="Point ANALYSIS_BASE_URL at an Ollama or vLLM server to get real analysis.",
+            recommended_action="Set GROQ_API_KEY, or point ANALYSIS_BASE_URL at an Ollama or vLLM server, to get real analysis.",
             image_quality="good",
             flags=[],
             confidence=0.0,
         )
 
 
-def build_analyzer() -> Analyzer | None:
-    provider = (settings.ANALYSIS_PROVIDER or ("openai_compatible" if settings.ANALYSIS_BASE_URL else "off")).lower()
-    if provider in ("openai_compatible", "ollama", "vllm"):
-        if not settings.ANALYSIS_BASE_URL:
-            logger.warning("ANALYSIS_PROVIDER is %s but ANALYSIS_BASE_URL is not set; analysis is off", provider)
-            return None
-        return OpenAICompatibleAnalyzer()
-    if provider == "mock":
-        return MockAnalyzer()
-    return None
+def resolve_provider() -> str:
+    explicit = settings.ANALYSIS_PROVIDER.strip().lower()
+    if explicit:
+        return "openai_compatible" if explicit in ("ollama", "vllm") else explicit
+    if settings.ANALYSIS_BASE_URL:
+        return "openai_compatible"
+    if settings.GROQ_API_KEY:
+        return "groq"
+    return "off"
 
 
 def analysis_enabled() -> bool:
     """Whether photos will get findings (used by the admin view to explain an empty panel)."""
-    provider = (settings.ANALYSIS_PROVIDER or ("openai_compatible" if settings.ANALYSIS_BASE_URL else "off")).lower()
-    return provider != "off"
+    return resolve_provider() != "off"
+
+
+def build_analyzer() -> Analyzer | None:
+    provider = resolve_provider()
+    if provider == "groq":
+        if not settings.GROQ_API_KEY:
+            logger.warning("ANALYSIS_PROVIDER is groq but GROQ_API_KEY is not set; photo analysis is off")
+            return None
+        return OpenAICompatibleAnalyzer(
+            provider="groq",
+            base_url=settings.ANALYSIS_BASE_URL or GROQ_BASE_URL,
+            api_key=settings.GROQ_API_KEY,
+            model=settings.ANALYSIS_MODEL or GROQ_DEFAULT_MODEL,
+            strict=True,
+        )
+    if provider == "openai_compatible":
+        if not settings.ANALYSIS_BASE_URL:
+            logger.warning("ANALYSIS_PROVIDER is openai_compatible but ANALYSIS_BASE_URL is not set; analysis is off")
+            return None
+        return OpenAICompatibleAnalyzer(
+            provider="openai_compatible",
+            base_url=settings.ANALYSIS_BASE_URL,
+            api_key=settings.ANALYSIS_API_KEY,
+            model=settings.ANALYSIS_MODEL or OLLAMA_DEFAULT_MODEL,
+        )
+    if provider == "mock":
+        return MockAnalyzer()
+    return None

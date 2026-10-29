@@ -340,9 +340,9 @@ VALID = {
 }
 
 
-def model_server(handler):
+def model_server(handler, **kwargs):
     client = httpx.AsyncClient(base_url="http://model.test/v1", transport=httpx.MockTransport(handler))
-    return OpenAICompatibleAnalyzer(client=client)
+    return OpenAICompatibleAnalyzer(client=client, **kwargs)
 
 
 def reply(content, status=200):
@@ -360,10 +360,11 @@ async def test_model_client_sends_the_photo_and_parses_the_answer():
         seen["path"] = request.url.path
         return reply("```json\n" + json.dumps(VALID) + "\n```")  # models often fence their JSON
 
-    result = await model_server(handler).analyze(jpeg(), "image/jpeg", CONTEXT)
+    analyzer = model_server(handler)
+    result = await analyzer.analyze(jpeg(), "image/jpeg", CONTEXT)
 
     assert result.severity == "high" and result.hazards == ["deep hole in the carriageway"]
-    assert seen["path"] == "/v1/chat/completions" and seen["model"] == settings.ANALYSIS_MODEL
+    assert seen["path"] == "/v1/chat/completions" and seen["model"] == analyzer.model
     user = seen["messages"][1]["content"]
     assert any(part["type"] == "image_url" and part["image_url"]["url"].startswith("data:image/jpeg;base64,") for part in user)
     assert seen["response_format"]["type"] == "json_schema"
@@ -443,3 +444,151 @@ def test_parse_findings_rejects_values_it_would_have_to_guess():
 async def test_mock_analyzer_labels_itself_as_demo_output():
     result = await MockAnalyzer().analyze(jpeg(), "image/jpeg", CONTEXT)
     assert "DEMO RESULT" in result.summary and result.confidence == 0.0
+
+
+# ---- Groq and rate limits (the PullWise integration pattern) --------------------------------
+
+
+class Sleeper:
+    """Stands in for asyncio.sleep so tests record the waits instead of sitting through them."""
+
+    def __init__(self):
+        self.waits = []
+
+    async def __call__(self, seconds):
+        self.waits.append(seconds)
+
+
+def limited_then_ok(limited, headers=None, message="Rate limit reached. Please try again in 2.5s."):
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] <= limited:
+            return httpx.Response(429, headers=headers or {}, json={"error": {"type": "rate_limit_exceeded", "message": message}})
+        return reply(json.dumps(VALID))
+
+    return handler, calls
+
+
+async def test_a_rate_limited_call_waits_for_the_retry_after_header_then_succeeds():
+    handler, calls = limited_then_ok(1, headers={"Retry-After": "3"})
+    sleeper = Sleeper()
+    result = await model_server(handler, sleep=sleeper).analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert result.severity == "high" and calls["n"] == 2
+    assert sleeper.waits == [3.25]  # what the server asked for, plus a small margin
+
+
+async def test_the_wait_is_read_from_the_message_when_there_is_no_header():
+    handler, _ = limited_then_ok(1)
+    sleeper = Sleeper()
+    await model_server(handler, sleep=sleeper).analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert sleeper.waits == [2.75]
+
+
+async def test_it_gives_up_after_two_retries_and_asks_to_be_tried_again_later():
+    handler, calls = limited_then_ok(99, headers={"Retry-After": "1"})
+    sleeper = Sleeper()
+    with pytest.raises(AnalysisError) as e:
+        await model_server(handler, sleep=sleeper).analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert calls["n"] == 3 and len(sleeper.waits) == 2  # one try plus two retries
+    assert e.value.retryable  # the worker's own backoff will try again later
+
+
+async def test_it_never_waits_longer_than_the_cap():
+    handler, calls = limited_then_ok(99, headers={"Retry-After": "120"})
+    sleeper = Sleeper()
+    with pytest.raises(AnalysisError) as e:
+        await model_server(handler, sleep=sleeper).analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert sleeper.waits == [] and calls["n"] == 1 and e.value.retryable
+
+
+async def test_other_errors_are_not_retried_inline():
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(500, json={"error": {"type": "server_error", "message": "boom"}})
+
+    sleeper = Sleeper()
+    with pytest.raises(AnalysisError) as e:
+        await model_server(handler, sleep=sleeper).analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert calls["n"] == 1 and sleeper.waits == [] and "boom" in str(e.value)
+
+
+@pytest.mark.parametrize("finish,retryable", [("length", True), ("content_filter", False)])
+async def test_an_unfinished_or_filtered_answer_is_an_error(finish, retryable):
+    def handler(request):
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(VALID)}, "finish_reason": finish}]})
+
+    with pytest.raises(AnalysisError) as e:
+        await model_server(handler).analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert e.value.retryable is retryable
+
+
+async def test_groq_requests_carry_the_key_a_strict_schema_and_a_vision_model(monkeypatch):
+    from app.analysis.analyzer import GROQ_BASE_URL, GROQ_DEFAULT_MODEL, build_analyzer
+
+    monkeypatch.setattr(settings, "ANALYSIS_PROVIDER", "")
+    monkeypatch.setattr(settings, "ANALYSIS_BASE_URL", None)
+    monkeypatch.setattr(settings, "ANALYSIS_MODEL", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "gsk_test_key")
+
+    analyzer = build_analyzer()
+    assert analyzer.provider == "groq" and analyzer.model == GROQ_DEFAULT_MODEL
+    assert str(analyzer._client.base_url).rstrip("/") == GROQ_BASE_URL
+    assert analyzer._client.headers["Authorization"] == "Bearer gsk_test_key"
+
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.content))
+        return reply(json.dumps(VALID))
+
+    groq = model_server(handler, provider="groq", strict=True)
+    await groq.analyze(jpeg(), "image/jpeg", CONTEXT)
+    schema = seen["response_format"]["json_schema"]
+    assert schema["strict"] is True
+    body = schema["schema"]
+    assert body["additionalProperties"] is False and set(body["required"]) == set(body["properties"])
+    assert "title" not in json.dumps(body)  # decorative keywords strict servers can reject
+
+
+def test_provider_choice_follows_the_settings(monkeypatch):
+    from app.analysis.analyzer import build_analyzer, resolve_provider
+
+    def configure(**values):
+        for key in ("ANALYSIS_PROVIDER", "ANALYSIS_BASE_URL", "GROQ_API_KEY"):
+            monkeypatch.setattr(settings, key, values.get(key, "" if key == "ANALYSIS_PROVIDER" else None))
+
+    configure()
+    assert resolve_provider() == "off" and build_analyzer() is None
+    configure(GROQ_API_KEY="k")
+    assert resolve_provider() == "groq"
+    configure(GROQ_API_KEY="k", ANALYSIS_BASE_URL="http://ollama:11434/v1")
+    assert resolve_provider() == "openai_compatible"  # a server you run wins over the hosted one
+    configure(ANALYSIS_PROVIDER="mock")
+    assert resolve_provider() == "mock" and isinstance(build_analyzer(), MockAnalyzer)
+    configure(ANALYSIS_PROVIDER="groq")  # asked for, but no key: off, not a crash
+    assert build_analyzer() is None
+
+
+async def test_a_text_only_error_never_leaks_the_api_key():
+    def handler(request):
+        return httpx.Response(401, json={"error": {"type": "invalid_api_key", "message": "Invalid API Key"}})
+
+    analyzer = model_server(handler, provider="groq")
+    with pytest.raises(AnalysisError) as e:
+        await analyzer.analyze(jpeg(), "image/jpeg", CONTEXT)
+    assert not e.value.retryable and "401" in str(e.value) and "Authorization" not in str(e.value)
+
+
+async def test_noisy_photos_are_shrunk_until_they_fit_a_hosted_models_limit():
+    import random
+
+    random.seed(1)
+    noise = Image.frombytes("RGB", (2400, 2400), random.randbytes(2400 * 2400 * 3))  # incompressible
+    raw = io.BytesIO()
+    noise.save(raw, "PNG")
+    out = await process_image(raw.getvalue())
+    assert len(out.data) <= 2_500_000

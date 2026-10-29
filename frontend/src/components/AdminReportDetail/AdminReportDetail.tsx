@@ -158,7 +158,9 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                             <figcaption>
                                 <Finding image={image} />
                                 {image.model && image.provider !== "mock" && (
-                                    <p className={styles.fine}>Analysed by {image.model}. This is an assistive check from an open-source model, so verify before acting.</p>
+                                    <p className={styles.fine}>
+                                        Analysed by {image.model}{image.provider === "groq" ? " on Groq" : ""}. This is an assistive check from an open-weight model, so verify before acting.
+                                    </p>
                                 )}
                             </figcaption>
                         </figure>
