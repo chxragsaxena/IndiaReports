@@ -1,57 +1,63 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { useAuth } from "../../auth/AuthContext";
 import Button from "../../components/UI/Button/Button";
 import Skeleton from "../../components/UI/Skeleton/Skeleton";
 import AdminReportDetail from "../../components/AdminReportDetail/AdminReportDetail";
 import { StatusBadge, SeverityBadge, Tag } from "../../components/UI/Badge/Badge";
 import { useToast } from "../../components/UI/Toast/Toast";
-import { ESCALATION_DAYS } from "../../config/api";
 import { useLiveSocket } from "../../hooks/useLiveSocket";
-import { listAdminReports, listOfficers, updateStatus } from "../../services/adminService";
-import type { AdminFilter, AdminReport, Officer } from "../../services/adminService";
+import { getStaffProfile, listAdminReports, updateStatus } from "../../services/adminService";
+import type { AdminFilter, AdminReport, StaffProfile } from "../../services/adminService";
 import { apiErrorMessage } from "../../services/reportService";
-import { STATUS_LABEL } from "../../types/report";
 import type { ReportStatus } from "../../types/report";
-import { timeAgo } from "../../utils/format";
+import { formatDateTime, timeAgo } from "../../utils/format";
+import ResolveDialog from "./ResolveDialog";
 import styles from "./Admin.module.css";
 
-const FILTERS: { value: AdminFilter; label: string }[] = [
-    { value: "attention", label: "Needs attention" },
-    { value: "escalated", label: "Escalated" },
-    { value: "OPEN", label: "Open" },
-    { value: "IN_PROGRESS", label: "In progress" },
-    { value: "RESOLVED", label: "Resolved" },
-    { value: "all", label: "All" },
-];
+const DAY = 86_400_000;
 
 // Whole of India. Zoomed out, the server only sends a throttled "something changed"
 // hint, which is exactly what a list that reloads itself needs.
 const INDIA_VIEW: [number, number, number, number] = [68, 6, 98, 37];
 
-function progress(r: AdminReport, now: number): { text: string; tone: "ok" | "wait" | "alert" } {
-    if (r.escalated_at) return { text: "Escalated to the administrator", tone: "alert" };
-    if (r.acknowledged_at) return { text: `Acknowledged ${timeAgo(r.acknowledged_at, now)}`, tone: "ok" };
-    if (!r.assigned_at) return { text: "Not assigned", tone: "wait" };
-    const left = Math.ceil((new Date(r.assigned_at).getTime() + ESCALATION_DAYS * 86_400_000 - now) / 86_400_000);
+type Tone = "ok" | "wait" | "alert";
+
+/** What the Deadline column says: when it must be resolved by, or what happened to it. */
+function deadline(r: AdminReport, visibleSeconds: number, now: number): { text: string; sub?: string; tone: Tone } {
+    if (r.status === "RESOLVED") {
+        const when = r.resolved_at ? `Resolved ${timeAgo(r.resolved_at, now)}` : "Resolved";
+        if (r.archived_at) return { text: when, sub: "Off the public map", tone: "ok" };
+        const left = r.resolved_at ? Math.ceil((new Date(r.resolved_at).getTime() + visibleSeconds * 1000 - now) / DAY) : 0;
+        return {
+            text: when,
+            sub: left > 0 ? `On the map ${left} more day${left === 1 ? "" : "s"} for the citizen to check` : "Leaving the map soon",
+            tone: "ok",
+        };
+    }
+    if (r.escalated_at) return { text: "Escalated to the main administrator", sub: formatDateTime(r.escalated_at), tone: "alert" };
+    if (!r.due_at) return { text: "Not assigned", tone: "wait" };
+
+    const left = Math.ceil((new Date(r.due_at).getTime() - now) / DAY);
+    if (r.overdue || left <= 0) return { text: "Overdue: escalating now", sub: `Was due ${formatDateTime(r.due_at)}`, tone: "alert" };
     return {
-        text: left > 0 ? `Awaiting acknowledgement, escalates in ${left} d` : "Escalating now",
-        tone: "wait",
+        text: `Due in ${left} day${left === 1 ? "" : "s"}`,
+        sub: `Resolve by ${formatDateTime(r.due_at)}`,
+        tone: left <= 2 ? "alert" : "wait",
     };
 }
 
 function Admin() {
     const toast = useToast();
-    const { user } = useAuth();
-    const [filter, setFilter] = useState<AdminFilter>("attention");
+    const [profile, setProfile] = useState<StaffProfile | null>(null);
+    const [filter, setFilter] = useState<AdminFilter>("todo");
     const [rows, setRows] = useState<AdminReport[]>([]);
     const [next, setNext] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const [officers, setOfficers] = useState<Officer[]>([]);
     const [reload, setReload] = useState(0);
     const [openId, setOpenId] = useState<string | null>(null);
+    const [resolving, setResolving] = useState<AdminReport | null>(null);
     const firstLoad = useRef(true);
 
     // Live updates: any new report or change reloads the list (the server throttles hints).
@@ -62,6 +68,10 @@ function Admin() {
     useEffect(() => setViewport(INDIA_VIEW, 4), [setViewport]);
 
     const fail = useCallback((err: unknown) => toast.show(apiErrorMessage(err), "error"), [toast]);
+
+    useEffect(() => {
+        getStaffProfile().then(setProfile).catch(fail);
+    }, [fail]);
 
     useEffect(() => {
         let cancelled = false;
@@ -83,10 +93,6 @@ function Admin() {
         };
     }, [filter, reload, fail]);
 
-    useEffect(() => {
-        listOfficers().then(setOfficers).catch(() => undefined);
-    }, []);
-
     async function loadMore() {
         if (!next) return;
         setLoadingMore(true);
@@ -101,32 +107,53 @@ function Admin() {
         }
     }
 
-    async function changeStatus(report: AdminReport, status: ReportStatus) {
+    async function move(report: AdminReport, status: ReportStatus, note?: string): Promise<boolean> {
         try {
-            await updateStatus(report.id, status);
-            setRows((current) =>
-                current.map((r) =>
-                    r.id === report.id
-                        ? { ...r, status, acknowledged_at: r.acknowledged_at ?? new Date().toISOString() }
-                        : r,
-                ),
+            await updateStatus(report.id, status, note);
+            toast.show(
+                status === "RESOLVED"
+                    ? "Marked resolved. The citizen has been told."
+                    : status === "IN_PROGRESS"
+                      ? "Marked in progress"
+                      : "Reopened",
+                "success",
             );
-            toast.show(`Marked ${STATUS_LABEL[status].toLowerCase()}`, "success");
+            setReload((n) => n + 1);
+            return true;
         } catch (err) {
             fail(err);
+            return false;
         }
     }
 
     const now = Date.now();
+    const isMain = profile?.is_main ?? false;
+    const visibleSeconds = profile?.resolved_visible_seconds ?? 3 * 86_400;
+    const resolveDays = profile ? Math.round(profile.resolve_within_seconds / 86_400) : 7;
+    const visibleDays = Math.max(1, Math.round(visibleSeconds / 86_400));
+
+    const filters: { value: AdminFilter; label: string }[] = [
+        { value: "todo", label: "To do" },
+        { value: "overdue", label: "Overdue" },
+        ...(isMain ? [{ value: "escalated" as AdminFilter, label: "Escalated" }] : []),
+        { value: "IN_PROGRESS", label: "In progress" },
+        { value: "RESOLVED", label: "Resolved" },
+        { value: "all", label: "All" },
+    ];
+
+    const columns = isMain ? 5 : 4;
 
     return (
         <div className={styles.page}>
             <header className={styles.header}>
                 <div>
-                    <h1>Administration</h1>
+                    <h1>{isMain ? "Administration" : "Your queue"}</h1>
                     <p className={styles.sub}>
-                        Signed in as {user?.name} &middot; {officers.filter((o) => o.role === "officer").length} area officers
-                        &middot; {officers.some((o) => o.role === "admin") ? "main admin set" : "no main admin set"}
+                        {!profile
+                            ? "Loading..."
+                            : isMain
+                              ? `All areas. Officers have ${resolveDays} days to resolve a report; after that it comes to you.`
+                              : `${profile.area_name ?? "Your area"}. Resolve each report within ${resolveDays} days of it arriving, or it is escalated to the main administrator.`}
                     </p>
                 </div>
                 <div className={styles.headerSide}>
@@ -134,12 +161,13 @@ function Admin() {
                         <span className={`${styles.liveDot} ${styles[liveStatus]}`} aria-hidden="true" />
                         {liveStatus === "live" ? "Live" : liveStatus === "off" ? "Live updates off" : "Connecting"}
                     </span>
+                    {isMain && <Link to="/admin/team">Team and areas</Link>}
                     <Link to="/dashboard">Insights</Link>
                 </div>
             </header>
 
             <div className={styles.filters} role="group" aria-label="Filter reports">
-                {FILTERS.map((f) => (
+                {filters.map((f) => (
                     <button
                         key={f.value}
                         className={f.value === filter ? styles.filterActive : styles.filter}
@@ -157,8 +185,8 @@ function Admin() {
                         <tr>
                             <th scope="col">Report</th>
                             <th scope="col">Where</th>
-                            <th scope="col">Sent to</th>
-                            <th scope="col">Progress</th>
+                            {isMain && <th scope="col">Assigned to</th>}
+                            <th scope="col">Deadline</th>
                             <th scope="col">Status</th>
                         </tr>
                     </thead>
@@ -166,21 +194,25 @@ function Admin() {
                         {loading &&
                             [0, 1, 2, 3].map((i) => (
                                 <tr key={i}>
-                                    <td colSpan={5}>
+                                    <td colSpan={columns}>
                                         <Skeleton height={34} />
                                     </td>
                                 </tr>
                             ))}
                         {!loading && rows.length === 0 && (
                             <tr>
-                                <td colSpan={5} className={styles.empty}>
-                                    Nothing here. {filter === "attention" ? "Every open report has been acknowledged." : ""}
+                                <td colSpan={columns} className={styles.empty}>
+                                    {filter === "todo"
+                                        ? isMain
+                                            ? "Nothing waiting. Every report has been resolved."
+                                            : "Your queue is clear. New reports in your area will appear here."
+                                        : "Nothing here."}
                                 </td>
                             </tr>
                         )}
                         {!loading &&
                             rows.map((r) => {
-                                const p = progress(r, now);
+                                const d = deadline(r, visibleSeconds, now);
                                 return (
                                     <tr key={r.id}>
                                         <th scope="row">
@@ -207,26 +239,37 @@ function Admin() {
                                             </span>
                                         </th>
                                         <td>{[r.city, r.state].filter(Boolean).join(", ")}</td>
+                                        {isMain && (
+                                            <td>
+                                                {r.assignee_name ?? <span className={styles.muted}>Nobody</span>}
+                                                {r.assignee_role === "admin" && <span className={styles.muted}> (admin)</span>}
+                                            </td>
+                                        )}
                                         <td>
-                                            {r.assignee_name ?? <span className={styles.muted}>Nobody</span>}
-                                            {r.assignee_role === "admin" && <span className={styles.muted}> (admin)</span>}
+                                            <span className={styles[d.tone]}>{d.text}</span>
+                                            {d.sub && <span className={styles.subline}>{d.sub}</span>}
+                                            {r.resolution_note && <span className={styles.note}>&ldquo;{r.resolution_note}&rdquo;</span>}
                                         </td>
-                                        <td className={styles[p.tone]}>{p.text}</td>
                                         <td>
                                             <div className={styles.statusCell}>
                                                 <StatusBadge status={r.status} />
-                                                <select
-                                                    className={styles.select}
-                                                    aria-label={`Change status of ${r.title}`}
-                                                    value={r.status}
-                                                    onChange={(e) => changeStatus(r, e.target.value as ReportStatus)}
-                                                >
-                                                    {(Object.keys(STATUS_LABEL) as ReportStatus[]).map((s) => (
-                                                        <option key={s} value={s}>
-                                                            {STATUS_LABEL[s]}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <div className={styles.actions}>
+                                                    {r.status === "OPEN" && (
+                                                        <Button size="sm" variant="secondary" onClick={() => move(r, "IN_PROGRESS")}>
+                                                            Start work
+                                                        </Button>
+                                                    )}
+                                                    {r.status !== "RESOLVED" && (
+                                                        <Button size="sm" onClick={() => setResolving(r)}>
+                                                            Mark resolved
+                                                        </Button>
+                                                    )}
+                                                    {r.status === "RESOLVED" && !r.archived_at && (
+                                                        <Button size="sm" variant="ghost" onClick={() => move(r, "OPEN")}>
+                                                            Reopen
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
@@ -237,6 +280,17 @@ function Admin() {
             </div>
 
             {openId && <AdminReportDetail key={openId} reportId={openId} onClose={() => setOpenId(null)} />}
+
+            {resolving && (
+                <ResolveDialog
+                    title={resolving.title}
+                    visibleDays={visibleDays}
+                    onClose={() => setResolving(null)}
+                    onSubmit={async (note) => {
+                        if (await move(resolving, "RESOLVED", note)) setResolving(null);
+                    }}
+                />
+            )}
 
             {next && (
                 <div className={styles.more}>

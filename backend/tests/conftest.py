@@ -16,7 +16,7 @@ from app.main import app  # noqa: E402
 @pytest_asyncio.fixture(autouse=True)
 async def clean_tables():
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE reports, outbox_events, officers, areas, report_cells, users, report_images RESTART IDENTITY CASCADE"))
+        await conn.execute(text("TRUNCATE reports, outbox_events, officers, areas, report_cells, users, report_images, email_jobs RESTART IDENTITY CASCADE"))
     clear_local_cache()
     redis = get_redis()
     if redis is not None:

@@ -1,4 +1,7 @@
-"""Escalates reports that nobody acknowledged in time to the main admin."""
+"""Escalates reports that were not resolved in time to the main admin.
+
+Only one level is built: area officer -> main admin. Further levels (city -> district -> state
+agencies) would repeat the same step up an area hierarchy; see docs/ARCHITECTURE.md."""
 
 import asyncio
 import logging
@@ -12,7 +15,9 @@ from app.events.outbox import add_event, escalated_payload
 from app.models.area import Officer
 from app.models.enums import ReportStatus
 from app.models.report import Report
+from app.models.user import User
 from app.services.assignment_service import get_admin, recipient_for
+from app.services.email_service import escalated_notice, queue_email
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +25,7 @@ BATCH_SIZE = 100
 
 
 async def escalate_once() -> int:
-    """Reassign overdue, unacknowledged reports to the admin and emit ReportEscalated.
+    """Reassign overdue, unresolved reports to the admin and emit ReportEscalated.
 
     Safe to run on many instances at once (rows are claimed with SKIP LOCKED), and
     safe to run repeatedly: a report escalates at most once. Returns how many moved."""
@@ -36,8 +41,8 @@ async def escalate_once() -> int:
             await db.execute(
                 select(Report)
                 .where(
-                    Report.status == ReportStatus.OPEN.value,
-                    Report.acknowledged_at.is_(None),
+                    # Acknowledging does not stop the clock: the officer must resolve it.
+                    Report.status != ReportStatus.RESOLVED.value,
                     Report.escalated_at.is_(None),
                     Report.assigned_officer_id.is_not(None),
                     Report.assigned_officer_id != admin.id,
@@ -65,6 +70,11 @@ async def escalate_once() -> int:
                     unacknowledged_seconds=waited,
                 ),
             )
+            if admin.user_id is not None:
+                admin_user = await db.get(User, admin.user_id)
+                if admin_user is not None:
+                    subject, body = escalated_notice(report, admin.name, previous.name if previous else "nobody", report.assigned_at)
+                    await queue_email(db, admin_user.email, subject, body, f"escalated:{report.id}")
 
         await db.commit()
         return len(reports)

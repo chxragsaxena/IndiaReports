@@ -43,6 +43,19 @@ services:
       ESCALATION_AFTER_SECONDS: ${ESCALATION_AFTER_SECONDS:-604800}
       ESCALATION_CHECK_SECONDS: ${ESCALATION_CHECK_SECONDS:-60}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      # A resolved report stays on the public map this long (the reporter can check it), then leaves.
+      RESOLVED_VISIBLE_SECONDS: ${RESOLVED_VISIBLE_SECONDS:-259200}
+      LIFECYCLE_CHECK_SECONDS: ${LIFECYCLE_CHECK_SECONDS:-60}
+      # Email to citizens (resolved) and officers (assigned). "log" prints emails to the service
+      # log; use "resend" (RESEND_API_KEY) or "smtp" (SMTP_*) to really send. See README.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-log}
+      EMAIL_FROM: ${EMAIL_FROM:-IndiaReports <onboarding@resend.dev>}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       # Photos: S3-compatible storage (MinIO below). The public URL is what a browser
       # uses to view a photo, so it must be the host-mapped port.
       S3_ENDPOINT_URL: http://storage:8000

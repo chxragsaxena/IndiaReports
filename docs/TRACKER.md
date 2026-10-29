@@ -139,6 +139,26 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   First admin on Render: sign up on the site, then Start Command
   `python -m scripts.migrate && python -m scripts.make_admin you@example.com && uvicorn app.main:app --host 0.0.0.0 --port $PORT` and restart.
 
+- Decentralised admin + resolution lifecycle (2026-10-29). Owner brief: a citizen flags an issue; it reaches the officer of that polygon/area only; the officer must
+  resolve it within 7 days or it escalates upward (higher tiers to be described, not built); resolved tickets stay visible for a few days so the citizen can check, then
+  vanish from the map; the citizen gets an email when it is resolved.
+  - Built: roles citizen / officer / admin; officers sign in (`officers.user_id`) and see only their own queue (other areas answer 404); main admin sees all and manages
+    areas, officers and accounts on a new Team page (area = pasted GeoJSON; "add sign-in" for officers created before accounts existed). Officer queue shows a deadline
+    (due in N days / overdue), Start work, Mark resolved (with a note for the citizen), Reopen.
+  - Resolution: note + who resolved it are recorded; the citizen is emailed; the report stays on the map `RESOLVED_VISIBLE_SECONDS` (default 3 days) with `leaves_map_at`
+    shown to the citizen, who can confirm ("Yes, it is fixed", leaves the map at once) or reopen (back to the officer, new 7-day deadline, officer emailed). A lifecycle job
+    then archives it (`ReportArchived` event subtracts it from the rollup; pins, lists, dashboard and rollup rebuilds exclude archived rows; nothing is deleted).
+  - Email: durable queue (`email_jobs`, in the same transaction as the change, de-duplicated), worker with retry/backoff, providers Resend (HTTPS, for Render free which blocks SMTP),
+    SMTP, log. Emails: citizen on resolve; officer on assignment and reopen; admin on escalation.
+  - Behaviour change: the 7-day clock now means RESOLVED (it used to mean acknowledged). Acknowledging or starting work no longer stops escalation. Test updated.
+  - Verified: 126 backend tests pass, 2 skipped without Redis (about 30 new: scoping, resolve, email retry/giving up/providers, window, confirm, reopen, rollup exclusion, deadline, escalation email) and a 14-check
+    real-browser run (officer resolves, citizen reopens, resolved again, confirmed, leaves the map in 9 s with a 75 s window, admin Team page, officer blocked from it).
+    Local email used the `log` provider; a real Resend/SMTP send has NOT been tried.
+  - Not built (by design): escalation above the main admin (see docs/ARCHITECTURE.md for the design); deactivating officers (their reports would need reassigning);
+    email verification and password reset; anonymous reporters get no email (no address).
+  - Live site notes: the 93 demo reports already RESOLVED are given a fresh 3-day window by the migration and will leave the map after that. The Render database has no areas
+    or officers yet, so new live reports have no assignee until the main admin adds them on the Team page.
+
 ## Still open (owner decisions / not done)
 - Render env vars worth setting: `JWT_SECRET` (long random string; lets you rotate without touching the database password), `CORS_ORIGINS` (the Vercel URL). Photos/AI on Render need `S3_*` storage settings and `GROQ_API_KEY`; Redis is not configured there (caching falls back to per-process).
 - The Go notifier and analytics services are not deployed on Render; the live site uses report-service only (live updates and Insights-from-analytics need those two).

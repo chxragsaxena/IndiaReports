@@ -34,6 +34,8 @@ def _changes(event_type: str, p: dict) -> list[tuple[float, float, str, str, int
         return [(lat, lng, p["status"], category, 1)]
     if event_type == "ReportStatusChanged" and p.get("old_status") and p.get("new_status"):
         return [(lat, lng, p["old_status"], category, -1), (lat, lng, p["new_status"], category, 1)]
+    if event_type == "ReportArchived" and p.get("new_status"):
+        return [(lat, lng, p["new_status"], category, -1)]  # leaves the map: counted nowhere
     return []
 
 

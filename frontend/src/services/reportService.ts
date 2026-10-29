@@ -157,6 +157,16 @@ export async function getMyReports(before?: string | null, signal?: AbortSignal)
     return response.data;
 }
 
+/** The reporter says the fix is real; the report then leaves the public map. */
+export async function confirmResolved(id: string): Promise<Report> {
+    return (await api.post<Report>(`/reports/${encodeURIComponent(id)}/confirm`)).data;
+}
+
+/** The reporter says it is not fixed: it goes back to the responsible officer. */
+export async function reopenReport(id: string, reason?: string): Promise<Report> {
+    return (await api.post<Report>(`/reports/${encodeURIComponent(id)}/reopen`, { reason: reason?.trim() || null })).data;
+}
+
 export class PhotosUnavailableError extends Error {}
 
 /** Attach one photo to a report you filed. Uploads can be slow on mobile, so allow a minute. */

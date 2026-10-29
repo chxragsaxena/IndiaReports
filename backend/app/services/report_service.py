@@ -2,12 +2,17 @@ import math
 import uuid
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import cached_json
 from app.core.config import settings
+from app.core.security import Staff
+from app.models.area import Officer
+from app.models.user import User
+from app.services.email_service import assigned_notice, queue_email, reopened_notice, resolved_notice
 from app.events.outbox import (
     add_event,
     report_created_payload,
@@ -79,6 +84,13 @@ class ReportService:
         # area queue on the same locks.
         add_event(db, "ReportCreated", report_created_payload(db_report, recipient))
 
+        # Tell the responsible officer by email too, if they have an account.
+        if assignee is not None and assignee.user_id is not None:
+            officer_user = await db.get(User, assignee.user_id)
+            if officer_user is not None:
+                subject, body = assigned_notice(db_report, assignee.name)
+                await queue_email(db, officer_user.email, subject, body, f"assigned:{db_report.id}")
+
         await db.commit()
 
         return db_report
@@ -92,13 +104,20 @@ class ReportService:
         db: AsyncSession,
         report_id: uuid.UUID,
         new_status: ReportStatus,
+        staff: Staff | None = None,
+        note: str | None = None,
     ) -> Report | None:
+        """Change a report's status as staff. Returns None when the report does not exist or
+        is not in this officer's queue (the same answer for both, so ids cannot be probed)."""
         result = await db.execute(
             select(Report).where(Report.id == report_id).with_for_update()
         )
         report = result.scalar_one_or_none()
-        if report is None:
+        if report is None or (staff is not None and not staff.can_see(report)):
             return None
+
+        if report.archived_at is not None:
+            raise HTTPException(status_code=409, detail="This report has been closed and archived.")
 
         old_status = report.status
         if old_status == new_status.value:
@@ -107,9 +126,76 @@ class ReportService:
         report.status = new_status.value
         changed_at = datetime.now(timezone.utc)
         if report.acknowledged_at is None and new_status != ReportStatus.OPEN:
-            report.acknowledged_at = changed_at  # someone acted on it: nothing to escalate
+            report.acknowledged_at = changed_at  # someone acted on it
+
+        if new_status == ReportStatus.RESOLVED:
+            report.resolved_at = changed_at
+            report.resolved_by = staff.user.id if staff and staff.user else None
+            report.resolution_note = (note or "").strip() or None
+            report.confirmed_at = None
+            await ReportService._tell_reporter_resolved(db, report)
+        elif old_status == ReportStatus.RESOLVED.value:
+            # Staff reopened it themselves: back in the queue with a fresh deadline.
+            report.resolved_at = report.resolved_by = report.resolution_note = report.confirmed_at = None
+            report.assigned_at = changed_at
 
         add_event(db, "ReportStatusChanged", status_changed_payload(report, old_status, changed_at))
+
+        await db.commit()
+        await db.refresh(report)
+        return report
+
+    @staticmethod
+    async def _tell_reporter_resolved(db: AsyncSession, report: Report) -> None:
+        if report.reporter_id is None:
+            return  # anonymous report: nobody to write to
+        reporter = await db.get(User, report.reporter_id)
+        if reporter is not None:
+            subject, body = resolved_notice(report, reporter.name)
+            stamp = int(report.resolved_at.timestamp()) if report.resolved_at else 0
+            await queue_email(db, reporter.email, subject, body, f"resolved:{report.id}:{stamp}")
+
+    @staticmethod
+    async def _own_resolved_report(db: AsyncSession, report_id: uuid.UUID, user: User) -> Report:
+        """The reporter's own resolved report that is still within its checking window, locked."""
+        report = (
+            await db.execute(select(Report).where(Report.id == report_id).with_for_update())
+        ).scalar_one_or_none()
+        # Same answer for "does not exist" and "not yours".
+        if report is None or report.reporter_id != user.id:
+            raise HTTPException(status_code=404, detail="Report not found.")
+        if report.status != ReportStatus.RESOLVED.value or report.archived_at is not None:
+            raise HTTPException(status_code=409, detail="This report is no longer open for checking.")
+        return report
+
+    @staticmethod
+    async def confirm_resolved(db: AsyncSession, report_id: uuid.UUID, user: User) -> Report:
+        """The reporter checked and the fix is real. The report then leaves the map early."""
+        report = await ReportService._own_resolved_report(db, report_id, user)
+        if report.confirmed_at is None:
+            report.confirmed_at = datetime.now(timezone.utc)
+            await db.commit()
+            await db.refresh(report)
+        return report
+
+    @staticmethod
+    async def reopen(db: AsyncSession, report_id: uuid.UUID, user: User, reason: str | None) -> Report:
+        """The reporter checked and it is not fixed. It goes back to the officer with a new deadline."""
+        report = await ReportService._own_resolved_report(db, report_id, user)
+        now = datetime.now(timezone.utc)
+
+        report.status = ReportStatus.OPEN.value
+        report.resolved_at = report.resolved_by = report.resolution_note = report.confirmed_at = None
+        report.acknowledged_at = None
+        report.assigned_at = now  # the clock starts again
+        add_event(db, "ReportStatusChanged", status_changed_payload(report, ReportStatus.RESOLVED.value, now))
+
+        officer = await db.get(Officer, report.assigned_officer_id) if report.assigned_officer_id else None
+        if officer is not None and officer.user_id is not None:
+            officer_user = await db.get(User, officer.user_id)
+            if officer_user is not None:
+                subject, body = reopened_notice(report, officer.name, (reason or "").strip() or None)
+                await queue_email(db, officer_user.email, subject, body, f"reopened:{report.id}:{int(now.timestamp())}")
 
         await db.commit()
         await db.refresh(report)
@@ -130,7 +216,7 @@ class ReportService:
         # Never return an unbounded result set.
         limit = min(limit or settings.MAX_REPORTS_PER_QUERY, settings.MAX_REPORTS_PER_QUERY)
 
-        query = select(Report)
+        query = select(Report).where(Report.archived_at.is_(None))
 
         if None not in (min_lat, max_lat, min_lng, max_lng):
             query = query.where(_viewport_filter(min_lat, max_lat, min_lng, max_lng))
@@ -171,7 +257,7 @@ class ReportService:
         async def compute():
             query = select(
                 Report.id, Report.status, Report.latitude, Report.longitude,
-            ).where(_viewport_filter(min_lat, max_lat, min_lng, max_lng))
+            ).where(_viewport_filter(min_lat, max_lat, min_lng, max_lng), Report.archived_at.is_(None))
             if status:
                 query = query.where(Report.status == status)
             if category:
@@ -209,7 +295,7 @@ class ReportService:
                 by_category[category] = by_category.get(category, 0) + n
 
             recent_rows = await db.execute(
-                select(Report).order_by(Report.created_at.desc()).limit(5)
+                select(Report).where(Report.archived_at.is_(None)).order_by(Report.created_at.desc()).limit(5)
             )
             recent = [
                 ReportResponse.model_validate(r).model_dump(mode="json")

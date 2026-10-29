@@ -105,3 +105,17 @@ class Report(Base, TimestampMixin):
     escalated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # Resolution. The note is written for the citizen and is shown publicly with the report.
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    resolution_note: Mapped[str | None] = mapped_column(Text(), nullable=True)
+
+    # The reporter had the chance to check the fix; confirming lets it leave the map early.
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Set once a resolved report has left the public map. It stays in the database and in
+    # the reporter's and officers' lists; it is just no longer drawn or counted.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

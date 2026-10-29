@@ -21,6 +21,12 @@ export interface AdminReport {
     assigned_at: string | null;
     acknowledged_at: string | null;
     escalated_at: string | null;
+    resolved_at: string | null;
+    archived_at: string | null;
+    resolution_note: string | null;
+    /** When it must be resolved by before it escalates. Null once resolved or escalated. */
+    due_at: string | null;
+    overdue: boolean;
     assignee_name: string | null;
     assignee_role: string | null;
     image_count: number;
@@ -37,28 +43,85 @@ export interface Officer {
     id: string;
     name: string;
     role: string;
-    telegram_chat_id: string;
+    telegram_chat_id: string | null;
     area_id: string | null;
+    area_name: string | null;
+    /** The account they sign in with. */
+    email: string | null;
     active: boolean;
 }
 
-export type AdminFilter = "attention" | "escalated" | "all" | "OPEN" | "IN_PROGRESS" | "RESOLVED";
+export interface Area {
+    id: string;
+    name: string;
+}
+
+/** Who is signed in as staff, and what their scope is. */
+export interface StaffProfile {
+    is_main: boolean;
+    name: string | null;
+    area_id: string | null;
+    area_name: string | null;
+    resolve_within_seconds: number;
+    resolved_visible_seconds: number;
+}
+
+export type AdminFilter = "todo" | "overdue" | "escalated" | "all" | "IN_PROGRESS" | "RESOLVED";
+
+export async function getStaffProfile(): Promise<StaffProfile> {
+    return (await client.get<StaffProfile>("/admin/me")).data;
+}
 
 export async function listOfficers(): Promise<Officer[]> {
     return (await client.get<Officer[]>("/admin/officers")).data;
 }
 
+export async function listAreas(): Promise<Area[]> {
+    return (await client.get<Area[]>("/admin/areas")).data;
+}
+
+export interface NewOfficer {
+    name: string;
+    area_id: string;
+    email: string;
+    /** Only needed when the email has no account yet. */
+    password?: string;
+    telegram_chat_id?: string;
+}
+
+export async function createOfficer(officer: NewOfficer): Promise<Officer> {
+    const body = { ...officer, role: "officer", password: officer.password || undefined, telegram_chat_id: officer.telegram_chat_id || undefined };
+    return (await client.post<Officer>("/admin/officers", body)).data;
+}
+
+/** Give an existing officer an account to sign in with (links it if the email already has one). */
+export async function setOfficerAccount(officerId: string, email: string, password?: string): Promise<Officer> {
+    return (
+        await client.put<Officer>(`/admin/officers/${encodeURIComponent(officerId)}/account`, {
+            email,
+            password: password || undefined,
+        })
+    ).data;
+}
+
+/** `geometry` is a GeoJSON Polygon or MultiPolygon in [longitude, latitude] order. */
+export async function createArea(name: string, geometry: unknown): Promise<Area> {
+    return (await client.post<Area>("/admin/areas", { name, geometry })).data;
+}
+
 export async function listAdminReports(filter: AdminFilter, before?: string | null): Promise<AdminReportPage> {
     const params: Record<string, string | boolean | number> = { limit: 25 };
-    if (filter === "attention") params.needs_attention = true;
+    if (filter === "todo") params.unresolved = true;
+    else if (filter === "overdue") params.overdue = true;
     else if (filter === "escalated") params.escalated = true;
     else if (filter !== "all") params.status = filter;
     if (before) params.before = before;
     return (await client.get<AdminReportPage>("/admin/reports", { params })).data;
 }
 
-export async function updateStatus(id: string, status: ReportStatus): Promise<void> {
-    await client.patch(`/reports/${encodeURIComponent(id)}/status`, { status });
+/** Move a report along. Resolving takes a note for the citizen, who is also emailed. */
+export async function updateStatus(id: string, status: ReportStatus, note?: string): Promise<void> {
+    await client.patch(`/reports/${encodeURIComponent(id)}/status`, { status, note: note?.trim() || null });
 }
 
 export interface Findings {
@@ -104,6 +167,13 @@ export interface AdminReportDetail {
     latitude: number;
     longitude: number;
     created_at: string | null;
+    assigned_at: string | null;
+    due_at: string | null;
+    acknowledged_at: string | null;
+    escalated_at: string | null;
+    resolved_at: string | null;
+    resolution_note: string | null;
+    assignee_name: string | null;
     images: AdminImage[];
     analysis_enabled: boolean;
 }

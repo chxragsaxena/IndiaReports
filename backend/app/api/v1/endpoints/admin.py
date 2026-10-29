@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.storage import get_store
 from app.models.image import ReportImage
 from app.schemas.image import AdminImage, AdminReportDetail
-from app.core.security import require_admin
+from app.core.security import Staff, require_admin, require_staff
 from app.db.session import get_db
 from app.models.area import Area, Officer
 from app.models.report import Report
@@ -24,16 +24,44 @@ from app.schemas.admin import (
     AdminReportRow,
     AreaCreate,
     AreaResponse,
+    OfficerAccount,
     OfficerCreate,
     OfficerResponse,
+    StaffProfile,
 )
 
 SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+# Everything here needs staff. Managing areas, officers and accounts additionally needs the
+# main administrator; an area officer only ever sees the reports assigned to them.
+router = APIRouter(dependencies=[Depends(require_staff)])
+main_only = [Depends(require_admin)]
 
 
-@router.post("/areas", response_model=AreaResponse, status_code=201)
+def _due_at(report: Report) -> datetime | None:
+    """When the responsible officer must resolve it by. None once resolved or escalated."""
+    if report.status == "RESOLVED" or report.escalated_at is not None or report.assigned_at is None:
+        return None
+    return report.assigned_at + timedelta(seconds=settings.ESCALATION_AFTER_SECONDS)
+
+
+@router.get("/me", response_model=StaffProfile)
+async def staff_profile(staff: Staff = Depends(require_staff), db: AsyncSession = Depends(get_db)):
+    area_name = None
+    if staff.officer is not None and staff.officer.area_id is not None:
+        area = await db.get(Area, staff.officer.area_id)
+        area_name = area.name if area else None
+    return StaffProfile(
+        is_main=staff.is_main,
+        name=(staff.officer.name if staff.officer else staff.user.name if staff.user else None),
+        area_id=staff.officer.area_id if staff.officer else None,
+        area_name=area_name,
+        resolve_within_seconds=settings.ESCALATION_AFTER_SECONDS,
+        resolved_visible_seconds=settings.RESOLVED_VISIBLE_SECONDS,
+    )
+
+
+@router.post("/areas", response_model=AreaResponse, status_code=201, dependencies=main_only)
 async def create_area(body: AreaCreate, db: AsyncSession = Depends(get_db)):
     if body.geometry.get("type") not in ("Polygon", "MultiPolygon"):
         raise HTTPException(422, "geometry must be a GeoJSON Polygon or MultiPolygon.")
@@ -56,42 +84,111 @@ async def create_area(body: AreaCreate, db: AsyncSession = Depends(get_db)):
     return area
 
 
-@router.get("/areas", response_model=list[AreaResponse])
+@router.get("/areas", response_model=list[AreaResponse], dependencies=main_only)
 async def list_areas(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Area).order_by(Area.name).limit(1000))
     return result.scalars().all()
 
 
-@router.post("/officers", response_model=OfficerResponse, status_code=201)
+@router.post("/officers", response_model=OfficerResponse, status_code=201, dependencies=main_only)
 async def create_officer(body: OfficerCreate, db: AsyncSession = Depends(get_db)):
+    area = None
     if body.role == "officer":
         if body.area_id is None:
             raise HTTPException(422, "an officer must be assigned to an area.")
-        if await db.get(Area, body.area_id) is None:
+        area = await db.get(Area, body.area_id)
+        if area is None:
             raise HTTPException(404, "area not found.")
     elif body.area_id is not None:
         raise HTTPException(422, "the admin is not tied to an area.")
+
+    user = await _account_for(db, body.email, body.password, body.role, body.name)
 
     officer = Officer(
         name=body.name,
         role=body.role,
         telegram_chat_id=body.telegram_chat_id,
         area_id=body.area_id,
+        user_id=user.id if user else None,
     )
     db.add(officer)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(409, "an active main admin already exists.")
+        raise HTTPException(409, "an active main admin already exists, or that account is already an officer.")
     await db.refresh(officer)
-    return officer
+    return _officer_response(officer, user.email if user else None, area.name if area else None)
 
 
-@router.get("/officers", response_model=list[OfficerResponse])
+async def _account_for(
+    db: AsyncSession, email_in: str | None, password: str | None, officer_role: str, name: str
+) -> User | None:
+    """The sign-in account for an officer: an existing one is linked, otherwise one is
+    created. Returns None when no email was given (a notification-only officer)."""
+    if email_in is None:
+        return None
+    wanted_role = "officer" if officer_role == "officer" else "admin"
+    email = email_in.lower()
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+
+    if user is None:
+        if not password:
+            raise HTTPException(422, "a password is required to create a new account for this email.")
+        user = User(email=email, name=name.strip(), password_hash=await hash_password(password), role=wanted_role)
+        db.add(user)
+        await db.flush()
+        return user
+
+    if user.role == "admin" and wanted_role == "officer":
+        raise HTTPException(409, "that account is the main administrator; use a different email for an area officer.")
+    user.role = wanted_role
+    user.active = True
+    return user
+
+
+@router.put("/officers/{officer_id}/account", response_model=OfficerResponse, dependencies=main_only)
+async def set_officer_account(officer_id: UUID, body: OfficerAccount, db: AsyncSession = Depends(get_db)):
+    """Give an existing officer (for example one created before sign-in existed) an account to
+    sign in with. Replacing it takes sign-in access away from the previous account."""
+    officer = await db.get(Officer, officer_id)
+    if officer is None:
+        raise HTTPException(404, "officer not found.")
+
+    user = await _account_for(db, body.email, body.password, officer.role, officer.name)
+    if officer.user_id is not None and officer.user_id != user.id:
+        previous = await db.get(User, officer.user_id)
+        if previous is not None and previous.role in ("officer", "admin"):
+            previous.role = "citizen"
+    officer.user_id = user.id
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "that account is already linked to another officer.")
+    area = await db.get(Area, officer.area_id) if officer.area_id else None
+    return _officer_response(officer, user.email, area.name if area else None)
+
+
+def _officer_response(officer: Officer, email: str | None, area_name: str | None) -> OfficerResponse:
+    return OfficerResponse(
+        id=officer.id, name=officer.name, role=officer.role, telegram_chat_id=officer.telegram_chat_id,
+        area_id=officer.area_id, area_name=area_name, email=email, active=officer.active,
+    )
+
+
+@router.get("/officers", response_model=list[OfficerResponse], dependencies=main_only)
 async def list_officers(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Officer).order_by(Officer.name).limit(1000))
-    return result.scalars().all()
+    rows = (
+        await db.execute(
+            select(Officer, User.email, Area.name)
+            .outerjoin(User, User.id == Officer.user_id)
+            .outerjoin(Area, Area.id == Officer.area_id)
+            .order_by(Officer.name)
+            .limit(1000)
+        )
+    ).all()
+    return [_officer_response(o, email, area_name) for o, email, area_name in rows]
 
 
 @router.get("/reports", response_model=AdminReportPage)
@@ -99,26 +196,38 @@ async def list_reports_for_admin(
     status: str | None = None,
     needs_attention: bool = False,
     escalated: bool = False,
+    overdue: bool = False,
+    unresolved: bool = False,
     before: datetime | None = None,
     limit: int = Query(default=50, ge=1, le=100),
+    staff: Staff = Depends(require_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reports with who they were sent to and whether anyone acted, newest first.
+    """Reports with who they were sent to and whether anyone acted, newest first. An area
+    officer gets only the reports assigned to them; the main administrator gets all of them.
 
-    needs_attention: open and not yet acknowledged. escalated: moved to the admin because
-    nobody acknowledged in time. Paged by `before` (keyset), so it stays fast on huge tables."""
+    unresolved: everything still to be done. needs_attention: open and not yet acknowledged. escalated: moved to the main administrator
+    because it was not resolved in time. overdue: past its deadline and about to escalate.
+    Paged by `before` (keyset), so it stays fast on huge tables."""
     query = (
         select(Report, Officer.name, Officer.role)
         .outerjoin(Officer, Officer.id == Report.assigned_officer_id)
         .order_by(Report.created_at.desc())
         .limit(limit + 1)
     )
+    if not staff.is_main:
+        query = query.where(Report.assigned_officer_id == staff.officer.id)
     if status:
         query = query.where(Report.status == status)
+    if unresolved:
+        query = query.where(Report.status != "RESOLVED")
     if needs_attention:
         query = query.where(Report.status == "OPEN", Report.acknowledged_at.is_(None))
     if escalated:
         query = query.where(Report.escalated_at.is_not(None))
+    if overdue:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.ESCALATION_AFTER_SECONDS)
+        query = query.where(Report.status != "RESOLVED", Report.escalated_at.is_(None), Report.assigned_at <= cutoff)
     if before:
         query = query.where(Report.created_at < before)
 
@@ -142,15 +251,19 @@ async def list_reports_for_admin(
         worst = max((s for s, _ in images if s), key=lambda s: SEVERITY_RANK.get(s, 0), default=None)
         return len(images), worst, any(st in ("pending", "analyzing") for _, st in images)
 
+    now = datetime.now(timezone.utc)
     items = []
     for r, name, role in page:
         count, worst, pending = summarise(r.id)
+        due = _due_at(r)
         items.append(
             AdminReportRow(
                 id=r.id, title=r.title, category=r.category, status=r.status, city=r.city, state=r.state,
                 latitude=r.latitude, longitude=r.longitude,
                 created_at=r.created_at, assigned_at=r.assigned_at, acknowledged_at=r.acknowledged_at,
-                escalated_at=r.escalated_at, assignee_name=name, assignee_role=role,
+                escalated_at=r.escalated_at, resolved_at=r.resolved_at, archived_at=r.archived_at,
+                resolution_note=r.resolution_note, due_at=due, overdue=bool(due and due <= now),
+                assignee_name=name, assignee_role=role,
                 image_count=count, ai_severity=worst, ai_pending=pending,
             )
         )
@@ -158,7 +271,7 @@ async def list_reports_for_admin(
     return AdminReportPage(items=items, next_before=next_before)
 
 
-@router.post("/users", response_model=UserResponse, status_code=201)
+@router.post("/users", response_model=UserResponse, status_code=201, dependencies=main_only)
 async def create_user(body: AdminUserCreate, db: AsyncSession = Depends(get_db)):
     """Administrators are only ever created here or by `python -m scripts.create_admin`."""
     email = body.email.lower()
@@ -176,22 +289,29 @@ async def create_user(body: AdminUserCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/reports/{report_id}", response_model=AdminReportDetail)
-async def report_detail(report_id: UUID, db: AsyncSession = Depends(get_db)):
+async def report_detail(
+    report_id: UUID, staff: Staff = Depends(require_staff), db: AsyncSession = Depends(get_db)
+):
     """One report with its photos and the AI findings about them. Photo links are short-lived."""
     report = await db.get(Report, report_id)
-    if report is None:
+    # Same answer for "does not exist" and "not in your queue".
+    if report is None or not staff.can_see(report):
         raise HTTPException(404, "Report not found.")
 
     images = (
         await db.execute(select(ReportImage).where(ReportImage.report_id == report_id).order_by(ReportImage.created_at))
     ).scalars().all()
     store = get_store()
+    assignee = await db.get(Officer, report.assigned_officer_id) if report.assigned_officer_id else None
 
     return AdminReportDetail(
         id=report.id, title=report.title, description=report.description, category=report.category,
         status=report.status, address=report.address, city=report.city, district=report.district,
         state=report.state, pincode=report.pincode, latitude=report.latitude, longitude=report.longitude,
-        created_at=report.created_at,
+        created_at=report.created_at, assigned_at=report.assigned_at, due_at=_due_at(report),
+        acknowledged_at=report.acknowledged_at, escalated_at=report.escalated_at,
+        resolved_at=report.resolved_at, resolution_note=report.resolution_note,
+        assignee_name=assignee.name if assignee else None,
         analysis_enabled=analysis_enabled(),
         images=[
             AdminImage(

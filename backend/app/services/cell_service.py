@@ -103,6 +103,7 @@ async def rebuild(db: AsyncSession) -> int:
                 SELECT {int(level)}, floor(latitude / {float(grid)})::int, floor(longitude / {float(grid)})::int,
                        status, category, count(*), sum(latitude), sum(longitude)
                 FROM reports
+                WHERE archived_at IS NULL
                 GROUP BY 2, 3, status, category
                 """
             )

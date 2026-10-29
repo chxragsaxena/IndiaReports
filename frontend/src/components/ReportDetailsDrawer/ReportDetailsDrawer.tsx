@@ -31,27 +31,43 @@ function buildTimeline(r: Report, now: number): Step[] {
 
     if (r.acknowledged_at) {
         steps.push({ label: "Acknowledged", detail: formatDateTime(r.acknowledged_at), state: "done" });
-    } else if (r.escalated_at) {
-        steps.push({
-            label: "Not acknowledged in time: escalated to the administrator",
-            detail: formatDateTime(r.escalated_at),
-            state: "alert",
-        });
-    } else if (r.assigned_at && r.status === "OPEN") {
-        const deadline = new Date(r.assigned_at).getTime() + ESCALATION_DAYS * 86_400_000;
-        const daysLeft = Math.ceil((deadline - now) / 86_400_000);
-        steps.push({
-            label: "Awaiting acknowledgement",
-            detail:
-                daysLeft > 0
-                    ? `Escalates to the administrator in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
-                    : "Escalating to the administrator",
-            state: "pending",
-        });
     }
 
-    if (r.status === "RESOLVED") {
-        steps.push({ label: "Resolved", detail: formatDateTime(r.updated_at), state: "done" });
+    if (r.status !== "RESOLVED") {
+        if (r.escalated_at) {
+            steps.push({
+                label: "Not resolved in time: escalated to the administrator",
+                detail: formatDateTime(r.escalated_at),
+                state: "alert",
+            });
+        } else if (r.assigned_at) {
+            const deadline = new Date(r.assigned_at).getTime() + ESCALATION_DAYS * 86_400_000;
+            const daysLeft = Math.ceil((deadline - now) / 86_400_000);
+            steps.push({
+                label: "Waiting to be resolved",
+                detail:
+                    daysLeft > 0
+                        ? `Escalates to the administrator in ${daysLeft} day${daysLeft === 1 ? "" : "s"} if it is not resolved`
+                        : "Escalating to the administrator",
+                state: "pending",
+            });
+        }
+        return steps;
+    }
+
+    steps.push({
+        label: "Resolved",
+        detail: [formatDateTime(r.resolved_at ?? r.updated_at), r.resolution_note ? `“${r.resolution_note}”` : ""]
+            .filter(Boolean)
+            .join(" · "),
+        state: "done",
+    });
+    if (r.leaves_map_at) {
+        steps.push({
+            label: "Open for the reporter to check",
+            detail: `Leaves the map ${formatDateTime(r.leaves_map_at)}`,
+            state: "pending",
+        });
     }
     return steps;
 }

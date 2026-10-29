@@ -1,7 +1,10 @@
 import { isAxiosError } from "axios";
 import type { AxiosInstance } from "axios";
 
-export type Role = "citizen" | "admin";
+export type Role = "citizen" | "officer" | "admin";
+
+/** Administrators and area officers: the people who work on reports. */
+export const isStaff = (role: Role | undefined): boolean => role === "admin" || role === "officer";
 
 export interface AuthUser {
     id: string;

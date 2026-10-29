@@ -54,6 +54,28 @@ docker compose run --rm --entrypoint python report-service -m scripts.create_adm
 ```
 Then sign in on the **Administrator** tab. Set `JWT_SECRET` to a long random value and `REQUIRE_LOGIN_TO_REPORT=true` in production.
 
+On a host with no shell (Render free tier), sign up on the site first, then run `python -m scripts.make_admin you@example.org` from the Start Command
+(before `uvicorn`) and restart.
+
+## How reports are handled
+1. A citizen reports an issue. It goes to the **officer of the smallest area (polygon) it falls in**, who is emailed. If no area contains it, it goes to the main administrator.
+2. The officer must **resolve it within 7 days** (`ESCALATION_AFTER_SECONDS`). Otherwise it is escalated to the main administrator. (Further levels up to
+   city, district and state agencies are described in `docs/ARCHITECTURE.md` but not built.)
+3. When the officer marks it resolved (with a note for the citizen), the citizen is **emailed** and the report **stays on the map for 3 days**
+   (`RESOLVED_VISIBLE_SECONDS`) so they can check it. They can confirm the fix or reopen it. Then it leaves the map; it is kept in "My reports".
+
+The main administrator manages officers and areas on the **Team** page (an area is a GeoJSON polygon, which you can draw at geojson.io).
+Officers sign in on the **Administrator** tab and see only their own area's queue.
+
+## Email
+Citizens are emailed when their report is resolved; officers when a report arrives in their area or is reopened; the administrator on escalation.
+Set `PUBLIC_APP_URL` (your Vercel address) so the emails link back to the site, then choose a provider:
+- `RESEND_API_KEY` (and `EMAIL_FROM`): HTTPS API from resend.com. **Use this on Render's free tier, which blocks SMTP.** Until you verify a domain, Resend only
+  delivers to your own account's address, which is enough for a demo.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`: any SMTP server (not on Render free).
+- `EMAIL_PROVIDER=log`: print emails in the server log (the local default).
+With none set, no email is sent and nothing else changes. Failed emails are retried for hours before giving up.
+
 ## Photos and AI analysis
 Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
 An open-weight vision model looks at each photo and reports findings to the administrator (what it shows, severity, hazards, whether the category fits,

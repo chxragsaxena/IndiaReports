@@ -18,9 +18,31 @@ class Settings(BaseSettings):
     # Signs the acknowledge links sent to officers. Falls back to ADMIN_API_KEY.
     ACK_SECRET: str | None = None
 
-    # A report left unacknowledged this long is escalated to the main admin (7 days).
+    # The responsible officer must RESOLVE a report within this long of it being assigned
+    # (7 days). Past that it escalates to the main admin. Acknowledging does not stop the clock.
     ESCALATION_AFTER_SECONDS: int = 7 * 24 * 3600
     ESCALATION_CHECK_SECONDS: int = 60
+
+    # A resolved report stays on the public map this long, so the person who reported it can
+    # check the fix (confirm it, or reopen it), then it leaves the map.
+    RESOLVED_VISIBLE_SECONDS: int = 3 * 24 * 3600
+    LIFECYCLE_CHECK_SECONDS: int = 60
+
+    # ---- Email (citizen "resolved" notices, officer assignment alerts) ------------------
+    # Providers: "resend" (HTTPS API; works on hosts that block SMTP, like Render's free tier),
+    # "smtp", "log" (print to the server log; development), "off". Empty means: resend if
+    # RESEND_API_KEY is set, else smtp if SMTP_HOST is set, else off.
+    EMAIL_PROVIDER: str = ""
+    EMAIL_FROM: str = "IndiaReports <onboarding@resend.dev>"
+    RESEND_API_KEY: str | None = None
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_STARTTLS: bool = True
+    EMAIL_MAX_ATTEMPTS: int = 6
+    # The website's address, used for links inside emails (for example https://example.vercel.app).
+    PUBLIC_APP_URL: str = ""
 
     # Signs sign-in tokens. Falls back to ADMIN_API_KEY so a deployment that only set
     # that still works; set a dedicated long random value in production.

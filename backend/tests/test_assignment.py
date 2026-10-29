@@ -180,18 +180,14 @@ async def test_unacknowledged_report_escalates_to_admin_once(client, monkeypatch
     assert (await client.post(url, json={"token": payload["recipient"]["ack_token"]})).status_code == 200
 
 
-async def test_acknowledged_or_admin_assigned_reports_do_not_escalate(client, monkeypatch):
+async def test_only_resolved_or_admin_assigned_reports_are_spared_escalation(client, monkeypatch):
     ward = await make_area(client, "Andheri ward", square(72.8, 19.0, 72.95, 19.15))
     await make_officer(client, "Asha", "111", ward)
     await make_officer(client, "Main Admin", "999", role="admin")
 
-    acked = await file_report(client)
-    token = (await events("ReportCreated"))[0][1]["recipient"]["ack_token"]
-    await client.post(f"/api/v1/reports/{acked['id']}/acknowledge", json={"token": token})
-
-    # Admin acting through the status API also counts as acknowledging.
-    handled = await file_report(client)
-    await client.patch(f"/api/v1/reports/{handled['id']}/status", json={"status": "IN_PROGRESS"}, headers=ADMIN)
+    # Resolved in time: nothing to escalate.
+    done = await file_report(client)
+    await client.patch(f"/api/v1/reports/{done['id']}/status", json={"status": "RESOLVED"}, headers=ADMIN)
 
     # Fell outside every area, so it went straight to the admin: nothing to escalate to.
     await file_report(client, latitude=28.61, longitude=77.21, city="Delhi", state="Delhi")
@@ -199,6 +195,25 @@ async def test_acknowledged_or_admin_assigned_reports_do_not_escalate(client, mo
     monkeypatch.setattr(settings, "ESCALATION_AFTER_SECONDS", 0)
     assert await escalate_once() == 0
     assert await events("ReportEscalated") == []
+
+
+async def test_acknowledging_or_starting_work_does_not_stop_the_clock(client, monkeypatch):
+    """The officer has to RESOLVE it in time; saying "seen" or "in progress" is not enough."""
+    ward = await make_area(client, "Andheri ward", square(72.8, 19.0, 72.95, 19.15))
+    await make_officer(client, "Asha", "111", ward)
+    await make_officer(client, "Main Admin", "999", role="admin")
+
+    seen = await file_report(client)
+    token = (await events("ReportCreated"))[0][1]["recipient"]["ack_token"]
+    await client.post(f"/api/v1/reports/{seen['id']}/acknowledge", json={"token": token})
+
+    working = await file_report(client)
+    await client.patch(f"/api/v1/reports/{working['id']}/status", json={"status": "IN_PROGRESS"}, headers=ADMIN)
+
+    monkeypatch.setattr(settings, "ESCALATION_AFTER_SECONDS", 0)
+    assert await escalate_once() == 2
+    escalated = {p["report_id"] for _, p in await events("ReportEscalated")}
+    assert escalated == {seen["id"], working["id"]}
 
 
 async def test_no_admin_means_no_escalation(client, monkeypatch):

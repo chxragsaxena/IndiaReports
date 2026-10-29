@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/AuthContext";
 import Button from "../../components/UI/Button/Button";
 import { TextField } from "../../components/UI/Input/Input";
 import { apiErrorMessage } from "../../services/reportService";
+import { isStaff } from "../../services/session";
 import type { Role } from "../../services/session";
 import BackdropMap from "./BackdropMap";
 import styles from "./Login.module.css";
@@ -13,7 +14,7 @@ import styles from "./Login.module.css";
 type Portal = "citizen" | "admin";
 type Mode = "signin" | "signup";
 
-const HOME: Record<Role, string> = { citizen: "/report", admin: "/admin" };
+const HOME: Record<Role, string> = { citizen: "/report", officer: "/admin", admin: "/admin" };
 
 /** Only follow same-site paths, so a crafted link cannot send someone elsewhere after sign-in. */
 function safeNext(next: string | null): string | null {
@@ -53,7 +54,7 @@ function Login() {
                     : await signIn(email.trim(), password);
 
             // The tab is only a hint about which form to show; the server decides the role.
-            if (portal === "admin" && signedIn.role !== "admin") {
+            if (portal === "admin" && !isStaff(signedIn.role)) {
                 signOut();
                 setError("This account does not have administrator access.");
                 return;
@@ -81,7 +82,7 @@ function Login() {
                     <ul>
                         <li>Pin issues to the exact spot</li>
                         <li>Reports go to the officer for that area</li>
-                        <li>Unanswered for 7 days? It goes to the administrator</li>
+                        <li>Not resolved in 7 days? It goes to the administrator</li>
                     </ul>
                 </section>
 
@@ -99,7 +100,7 @@ function Login() {
                             type="button"
                         >
                             <strong>{p === "citizen" ? "Citizen" : "Administrator"}</strong>
-                            <span>{p === "citizen" ? "Report issues in your area" : "Manage and track reports"}</span>
+                            <span>{p === "citizen" ? "Report issues in your area" : "Officers and administrators"}</span>
                         </button>
                     ))}
                 </div>
@@ -153,7 +154,7 @@ function Login() {
                         </button>
                     </p>
                 ) : (
-                    <p className={styles.switch}>Administrator accounts are created by an existing administrator.</p>
+                    <p className={styles.switch}>Administrator and officer accounts are created by the main administrator.</p>
                 )}
             </div>
             </div>

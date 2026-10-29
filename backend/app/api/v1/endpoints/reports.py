@@ -16,10 +16,10 @@ from app.schemas.image import ImageUploadResponse
 from app.core.config import settings
 from app.core.rate_limit import rate_limit_uploads, rate_limit_writes
 from app.models.user import User
-from app.core.security import require_admin
+from app.core.security import Staff, require_staff
 from app.db.session import get_db
 from app.schemas.admin import AcknowledgeRequest
-from app.schemas.report import ReportCreate, ReportResponse, ReportStatusUpdate
+from app.schemas.report import ReopenRequest, ReportCreate, ReportResponse, ReportStatusUpdate
 from app.services import assignment_service
 from app.services.report_service import ReportService
 
@@ -176,17 +176,40 @@ async def acknowledge_report(
 @router.patch(
     "/{report_id}/status",
     response_model=ReportResponse,
-    dependencies=[Depends(require_admin)],
 )
 async def update_report_status(
     report_id: UUID,
     body: ReportStatusUpdate,
+    staff: Staff = Depends(require_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    report = await ReportService.update_status(db, report_id, body.status)
+    """Staff change a report's status. An area officer can only act on reports assigned to
+    them. Resolving records who did it and the note, and emails the person who reported it."""
+    report = await ReportService.update_status(db, report_id, body.status, staff=staff, note=body.note)
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found.")
     return report
+
+
+@router.post("/{report_id}/confirm", response_model=ReportResponse)
+async def confirm_report_resolved(
+    report_id: UUID,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The person who reported it says the fix is real; it then leaves the public map."""
+    return await ReportService.confirm_resolved(db, report_id, user)
+
+
+@router.post("/{report_id}/reopen", response_model=ReportResponse, dependencies=[Depends(rate_limit_writes)])
+async def reopen_report(
+    report_id: UUID,
+    body: ReopenRequest,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The person who reported it says it is not fixed: back to the officer, deadline restarted."""
+    return await ReportService.reopen(db, report_id, user, body.reason)
 
 
 @router.post(

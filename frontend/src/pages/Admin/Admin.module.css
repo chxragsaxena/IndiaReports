@@ -199,3 +199,44 @@
 .detailBtn:hover {
     background: var(--brand-soft);
 }
+
+.subline {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--text-3);
+}
+
+.note {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.82rem;
+    color: var(--text-2);
+    font-style: italic;
+    max-width: 280px;
+    overflow-wrap: anywhere;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.dialogForm {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.dialogLead {
+    font-weight: 600;
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+.dialogActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}

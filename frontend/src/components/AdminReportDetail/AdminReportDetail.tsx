@@ -138,6 +138,19 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                         {[detail.address, detail.city, detail.district, detail.state, detail.pincode].filter(Boolean).join(", ")}
                     </p>
 
+                    <p className={styles.muted}>
+                        {detail.assignee_name ? `Assigned to ${detail.assignee_name}` : "Not assigned"}
+                        {detail.assigned_at ? ` on ${formatDateTime(detail.assigned_at)}` : ""}.
+                        {detail.status === "RESOLVED"
+                            ? ` Resolved ${formatDateTime(detail.resolved_at)}.`
+                            : detail.escalated_at
+                              ? ` Escalated ${formatDateTime(detail.escalated_at)}.`
+                              : detail.due_at
+                                ? ` Resolve by ${formatDateTime(detail.due_at)}.`
+                                : ""}
+                    </p>
+                    {detail.resolution_note && <p className={styles.description}>&ldquo;{detail.resolution_note}&rdquo;</p>}
+
                     <h3>Photos ({detail.images.length})</h3>
 
                     {detail.images.length === 0 && <p className={styles.muted}>The reporter did not attach any photos.</p>}

@@ -51,13 +51,48 @@ Every report is routed to a named person, and silence is not allowed to hide a p
    wins (a ward officer beats a district officer). If no area matches, the admin is assigned.
 3. The `ReportCreated` event carries the recipient. The notifier messages that person directly with a **signed acknowledge link**
    (HMAC over report id + officer id, no login needed). Re-assigning a report invalidates the previous person's link.
-4. **Acknowledging** (via the link, or an admin moving the status past OPEN) stamps `acknowledged_at` and moves OPEN to IN_PROGRESS.
-5. **Escalation**: a background job in report-service finds reports that are OPEN, unacknowledged and older than
-   `ESCALATION_AFTER_SECONDS` (default 7 days), reassigns them to the admin and emits `ReportEscalated`. It runs on every instance
-   safely (`FOR UPDATE SKIP LOCKED`), escalates each report at most once, and a partial index keeps the lookup tiny at any table size.
+4. **Acknowledging** (via the link, or staff moving the status past OPEN) stamps `acknowledged_at` and moves OPEN to IN_PROGRESS.
+   It does not stop the deadline clock.
+5. **Escalation**: the officer must **resolve** the report within `ESCALATION_AFTER_SECONDS` (default 7 days) of it being assigned.
+   A background job in report-service finds reports that are not RESOLVED and past that, reassigns them to the main admin, emits
+   `ReportEscalated` and emails the admin. It runs on every instance safely (`FOR UPDATE SKIP LOCKED`), escalates each report at most once,
+   and a partial index keeps the lookup tiny at any table size.
 
 Security: the recipient's chat id and token travel only on the internal stream. The notifier strips them from every WebSocket
 payload (covered by a test) and redacts tokens from logs.
+
+### Decentralised administration (area officers)
+Administration is split by area instead of sitting with one person. An **officer** record can be tied to a sign-in account
+(`officers.user_id`, user role `officer`). Signed in, an officer sees only the reports assigned to them (`Staff.can_see`): another
+area's report answers 404, the same as one that does not exist. The **main admin** sees everything and alone manages areas, officers
+and accounts (the Team page). Officers get an email for each new report in their area, and for a reopen.
+
+### Resolution lifecycle (what the citizen sees)
+1. An officer marks a report **RESOLVED** with a note (`resolution_note`, public, written for the citizen). `resolved_at` and
+   `resolved_by` are recorded and the reporter is emailed (queued in the same transaction, see below).
+2. The report **stays on the public map** for `RESOLVED_VISIBLE_SECONDS` (default 3 days). During that window the reporter, and only
+   the reporter, can **confirm** the fix or **reopen** it. Reopening returns it to the officer as OPEN with a fresh 7-day deadline.
+3. After the window (or immediately once confirmed) a lifecycle job **archives** it (`archived_at`) and emits `ReportArchived`. The rollup
+   applier subtracts it from the map counts, and pins, lists and the dashboard exclude archived rows. Nothing is deleted: it stays in the
+   reporter's "My reports" and in the officers' lists. Rebuilding the rollup from scratch also leaves archived rows out.
+4. Anyone can still open an archived report by its id. A resolved report that has been archived can no longer be reopened (file a new one).
+
+### Email
+Emails are rows in `email_jobs`, inserted in the same transaction as the change that causes them, with a `dedupe_key` so a retried request
+cannot queue the same notice twice. A background worker (`SKIP LOCKED`, safe on many instances) sends them and retries failures with
+growing delays (1 min doubling to 6 h, 6 attempts), so a provider outage delays email but never loses it. Delivery is at-least-once.
+Providers: Resend (HTTPS API; use this on Render's free tier, which blocks SMTP), SMTP, or `log` for development. With none configured
+nothing is queued and the app works as before. User-written text is stripped of control characters before it reaches a header.
+
+### Escalating to higher agencies (designed, deliberately not built)
+Today there is one escalation step: officer, then main admin. The real structure has more levels (ward, city, district, state), and the
+same mechanism extends to them without new machinery:
+- add `areas.parent_id` so areas form a tree, and `areas.resolve_within_seconds` so each level has its own deadline;
+- give each level's officer an escalation target (their area's parent officer instead of "the" admin);
+- make the escalation job climb one level per missed deadline, emitting `ReportEscalated` each time, and keep a `report_escalations`
+  history table so the whole chain is visible on the report.
+`escalated_at` would become the latest escalation and the timeline would list every step. Nothing else (assignment, queue scoping, emails,
+the map lifecycle) needs to change, because they all key off `assigned_officer_id`.
 
 ## Read and write paths (what the load test changed)
 - **Writes never touch shared hot rows.** A request inserts the report and an outbox event in one transaction and returns. A background applier
@@ -69,8 +104,9 @@ payload (covered by a test) and redacts tokens from logs.
 - **Repair.** `python -m scripts.rebuild_cells` rebuilds the rollup from the reports table (run it after bulk loads that bypass the app).
 
 ## Sign-in and roles
-- Two roles: **citizen** (self-service sign-up with email + password; can report and see their own reports) and **admin** (never self-service;
-  created with `python -m scripts.create_admin` or `POST /api/v1/admin/users` by an existing admin).
+- Three roles: **citizen** (self-service sign-up with email + password; can report and see their own reports), **officer** (works the queue of
+  one area; created by the main admin on the Team page) and **admin** (the main administrator; never self-service; created with
+  `python -m scripts.create_admin`, `python -m scripts.make_admin <email>` or `POST /api/v1/admin/users`).
 - The sign-in page's Citizen/Administrator tabs only choose which form to show. The server decides the role, and re-checks it on every request:
   the role and the `active` flag are read from the database (not trusted from the token), so demoting or disabling an admin takes effect at once.
 - Passwords are hashed with argon2id (off the event loop). Sign-in gives clear reasons (no account for this email / incorrect password / account disabled). This does reveal which emails have accounts, as sign-up already does, so scanning is limited by the per-IP rate limit below (a deliberate trade for clarity),

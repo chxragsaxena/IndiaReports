@@ -179,6 +179,10 @@ function IndiaMap({
                     }));
                     source(map, "reports")?.setData(toCollection([...pinsRef.current.values()]));
                 }
+            } else if (event === "ReportArchived" && pinsRef.current.has(r.report_id)) {
+                // A resolved report has left the public map.
+                pinsRef.current.delete(r.report_id);
+                source(map, "reports")?.setData(toCollection([...pinsRef.current.values()]));
             } else if (event === "ReportStatusChanged" && pinsRef.current.has(r.report_id)) {
                 if (visible && status) {
                     const pin = pinsRef.current.get(r.report_id)!;

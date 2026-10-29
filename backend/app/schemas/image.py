@@ -38,5 +38,12 @@ class AdminReportDetail(BaseModel):
     latitude: float
     longitude: float
     created_at: datetime | None = None
+    assigned_at: datetime | None = None
+    due_at: datetime | None = None
+    acknowledged_at: datetime | None = None
+    escalated_at: datetime | None = None
+    resolved_at: datetime | None = None
+    resolution_note: str | None = None
+    assignee_name: str | None = None
     images: list[AdminImage]
     analysis_enabled: bool

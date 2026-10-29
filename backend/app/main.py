@@ -18,6 +18,8 @@ from app.db.session import engine
 from app.events.analysis import run_analysis
 from app.events.escalation import run_escalation
 from app.core.auth import signing_source
+from app.events.lifecycle import run_lifecycle
+from app.events.mailer import run_mailer
 from app.events.outbox import run_relay
 from app.events.rollup import run_rollup
 
@@ -57,6 +59,8 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_relay(stop)),
         asyncio.create_task(run_escalation(stop)),
         asyncio.create_task(run_rollup(stop)),
+        asyncio.create_task(run_lifecycle(stop)),
+        asyncio.create_task(run_mailer(stop)),
         asyncio.create_task(run_analysis(stop, build_analyzer())),
     ]
     try:

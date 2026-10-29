@@ -12,6 +12,7 @@ const ReportPage = lazy(() => import("../pages/Report/ReportPage"));
 const Dashboard = lazy(() => import("../pages/Dashboard/Dashboard"));
 const Acknowledge = lazy(() => import("../pages/Acknowledge/Acknowledge"));
 const Admin = lazy(() => import("../pages/Admin/Admin"));
+const Team = lazy(() => import("../pages/Admin/Team"));
 const Login = lazy(() => import("../pages/Login/Login"));
 const MyReports = lazy(() => import("../pages/MyReports/MyReports"));
 const NotFound = lazy(() => import("../pages/NotFound/NotFound"));
@@ -40,9 +41,10 @@ function AppRouter() {
                         <Route path="/report" element={<RequireRole><ReportPage /></RequireRole>} />
                         <Route path="/my-reports" element={<RequireRole roles={["citizen"]}><MyReports /></RequireRole>} />
 
-                        {/* Administrators only */}
-                        <Route path="/admin" element={<RequireRole roles={["admin"]}><Admin /></RequireRole>} />
-                        <Route path="/dashboard" element={<RequireRole roles={["admin"]}><Dashboard /></RequireRole>} />
+                        {/* Staff: area officers see their own queue, the main administrator sees everything */}
+                        <Route path="/admin" element={<RequireRole roles={["admin", "officer"]}><Admin /></RequireRole>} />
+                        <Route path="/admin/team" element={<RequireRole roles={["admin"]}><Team /></RequireRole>} />
+                        <Route path="/dashboard" element={<RequireRole roles={["admin", "officer"]}><Dashboard /></RequireRole>} />
 
                         <Route path="*" element={<NotFound />} />
                     </Route>

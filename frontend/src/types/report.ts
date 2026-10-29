@@ -48,6 +48,16 @@ export interface Report {
     assigned_at?: string | null;
     acknowledged_at?: string | null;
     escalated_at?: string | null;
+
+    /** Set when an officer resolved it. The note is public: it is the answer to the citizen. */
+    resolved_at?: string | null;
+    resolution_note?: string | null;
+    /** The reporter confirmed the fix. */
+    confirmed_at?: string | null;
+    /** Set once it has left the public map (the reporter's window to check it has ended). */
+    archived_at?: string | null;
+    /** When a resolved report stops being drawn on the public map. Null otherwise. */
+    leaves_map_at?: string | null;
 }
 
 export interface NewReport {

@@ -39,9 +39,14 @@ class Officer(Base):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
-    telegram_chat_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Optional: an officer can work entirely through the website and email.
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     area_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("areas.id", ondelete="SET NULL"), nullable=True
+    )
+    # The sign-in account this officer works through. Their queue is the reports assigned to them.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(
@@ -57,4 +62,6 @@ class Officer(Base):
             postgresql_where=text("role = 'admin' AND active"),
         ),
         Index("ix_officers_area", "area_id"),
+        # One officer record per account.
+        Index("uq_officers_user", "user_id", unique=True, postgresql_where=text("user_id IS NOT NULL")),
     )

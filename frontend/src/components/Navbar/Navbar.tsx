@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext";
+import { isStaff } from "../../services/session";
 import styles from "./Navbar.module.css";
 
 function Navbar() {
@@ -25,11 +26,16 @@ function Navbar() {
                 <NavLink to="/" end className={linkClass}>
                     Map
                 </NavLink>
-                {user?.role === "admin" && (
+                {isStaff(user?.role) && (
                     <>
-                        <NavLink to="/admin" className={linkClass}>
-                            Admin
+                        <NavLink to="/admin" end className={linkClass}>
+                            {user?.role === "admin" ? "Admin" : "My queue"}
                         </NavLink>
+                        {user?.role === "admin" && (
+                            <NavLink to="/admin/team" className={linkClass}>
+                                Team
+                            </NavLink>
+                        )}
                         <NavLink to="/dashboard" className={linkClass}>
                             Insights
                         </NavLink>
@@ -57,7 +63,7 @@ function Navbar() {
                 </Link>
             )}
 
-            {user?.role !== "admin" && (
+            {!isStaff(user?.role) && (
                 <Link to="/report" className={styles.cta}>
                     Report an issue
                 </Link>

@@ -34,7 +34,7 @@ def recipient_for(report: Report, officer: Officer) -> dict:
         "officer_id": str(officer.id),
         "name": officer.name,
         "role": officer.role,
-        "chat_id": officer.telegram_chat_id,
+        "chat_id": officer.telegram_chat_id or "",
         "ack_token": ack_token(report.id, officer.id),
     }
 
