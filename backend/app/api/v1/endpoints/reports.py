@@ -4,7 +4,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import current_user_optional
+from app.core.config import settings
 from app.core.rate_limit import rate_limit_writes
+from app.models.user import User
 from app.core.security import require_admin
 from app.db.session import get_db
 from app.schemas.admin import AcknowledgeRequest
@@ -32,10 +35,14 @@ def json_response(body: str) -> Response:
 async def create_report(
     report: ReportCreate,
     db: AsyncSession = Depends(get_db),
+    reporter: User | None = Depends(current_user_optional),
 ):
+    if reporter is None and settings.REQUIRE_LOGIN_TO_REPORT:
+        raise HTTPException(status_code=401, detail="Please sign in to report an issue.")
     return await ReportService.create_report(
         db=db,
         report=report,
+        reporter_id=reporter.id if reporter else None,
     )
 
 

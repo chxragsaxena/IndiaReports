@@ -42,6 +42,7 @@ class ReportService:
     async def create_report(
         db: AsyncSession,
         report: ReportCreate,
+        reporter_id: uuid.UUID | None = None,
     ) -> Report:
 
         # Decide everything up front and set every column in Python, so the report is
@@ -55,6 +56,7 @@ class ReportService:
         db_report = Report(
             **report.model_dump(),
             id=uuid.uuid4(),
+            reporter_id=reporter_id,
             status=ReportStatus.OPEN.value,
             created_at=now,
             updated_at=now,

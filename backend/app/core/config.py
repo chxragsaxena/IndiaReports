@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     ESCALATION_AFTER_SECONDS: int = 7 * 24 * 3600
     ESCALATION_CHECK_SECONDS: int = 60
 
+    # Signs sign-in tokens. Falls back to ADMIN_API_KEY so a deployment that only set
+    # that still works; set a dedicated long random value in production.
+    JWT_SECRET: str | None = None
+    JWT_TTL_SECONDS: int = 8 * 3600
+    AUTH_RATE_LIMIT_PER_MINUTE: int = 20
+
+    # When true, only signed-in people can file reports (anonymous reports are refused).
+    # Off by default so existing clients keep working; turn it on in production.
+    REQUIRE_LOGIN_TO_REPORT: bool = False
+
     CORS_ORIGINS: str = "*"
 
     # Connection budget: workers x instances x (DB_POOL_SIZE + DB_MAX_OVERFLOW) must stay

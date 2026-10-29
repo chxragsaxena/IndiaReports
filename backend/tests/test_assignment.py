@@ -208,3 +208,33 @@ async def test_no_admin_means_no_escalation(client, monkeypatch):
 
     monkeypatch.setattr(settings, "ESCALATION_AFTER_SECONDS", 0)
     assert await escalate_once() == 0
+
+
+async def test_admin_report_list_shows_assignee_and_filters(client):
+    ward = await make_area(client, "Andheri ward", square(72.8, 19.0, 72.95, 19.15))
+    await make_officer(client, "Asha Rao", "111", ward)
+    first = await file_report(client, title="Pothole one")
+    await file_report(client, title="Pothole two")
+    await client.patch(f"/api/v1/reports/{first['id']}/status", json={"status": "IN_PROGRESS"}, headers=ADMIN)
+
+    assert (await client.get("/api/v1/admin/reports")).status_code == 401  # key required
+
+    everything = (await client.get("/api/v1/admin/reports", headers=ADMIN)).json()
+    assert [r["title"] for r in everything["items"]] == ["Pothole two", "Pothole one"]  # newest first
+    assert everything["items"][0]["assignee_name"] == "Asha Rao"
+    assert everything["next_before"] is None
+
+    needs = (await client.get("/api/v1/admin/reports", params={"needs_attention": True}, headers=ADMIN)).json()
+    assert [r["title"] for r in needs["items"]] == ["Pothole two"]  # the other was acted on
+
+
+async def test_admin_report_list_pages_by_keyset(client):
+    for i in range(3):
+        await file_report(client, title=f"Report {i}")
+    page1 = (await client.get("/api/v1/admin/reports", params={"limit": 2}, headers=ADMIN)).json()
+    assert len(page1["items"]) == 2 and page1["next_before"]
+    page2 = (
+        await client.get("/api/v1/admin/reports", params={"limit": 2, "before": page1["next_before"]}, headers=ADMIN)
+    ).json()
+    assert [r["title"] for r in page2["items"]] == ["Report 0"]
+    assert page2["next_before"] is None

@@ -103,6 +103,10 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   - New files: `docs/LOADTEST.md`, root `README.md`, `loadtest/`, `services/notifier/loadtest/ws/`.
   - Map semantics changed: clusters up to zoom 10, pins from zoom 11 (was 8). Pins endpoint reports `truncated` if a view has more than 500.
 
+- Auth added (2026-10-29): citizen/admin sign-in, role-based pages, admin report dashboard with live updates, "My reports". 47 backend tests pass; the whole
+  flow was driven in a real browser (15 checks). A real bug was found and fixed on the way: the live-update hook could drop its viewport in dev (React double-mount race).
+  Demo admin for local use only: admin@example.org / ChangeMe-Admin-123 (change or delete it; never deploy it).
+
 ## Still open (owner decisions / not done)
 - Render/Vercel/Redis setup and env vars (see root README). Merge `microservices` into `main` only after the deploy is configured:
   the Render root dir for the backend is unchanged (`backend/`), but the database needs `alembic upgrade head` (and possibly `alembic stamp` first).

@@ -67,3 +67,17 @@ payload (covered by a test) and redacts tokens from logs.
 - **Connection budget.** workers x instances x (pool + overflow) must stay under the database `max_connections`; behind PgBouncer it can be much larger.
   When the pool is exhausted the API answers `503` with `Retry-After`, not a slow `500`.
 - **Repair.** `python -m scripts.rebuild_cells` rebuilds the rollup from the reports table (run it after bulk loads that bypass the app).
+
+## Sign-in and roles
+- Two roles: **citizen** (self-service sign-up with email + password; can report and see their own reports) and **admin** (never self-service;
+  created with `python -m scripts.create_admin` or `POST /api/v1/admin/users` by an existing admin).
+- The sign-in page's Citizen/Administrator tabs only choose which form to show. The server decides the role, and re-checks it on every request:
+  the role and the `active` flag are read from the database (not trusted from the token), so demoting or disabling an admin takes effect at once.
+- Passwords are hashed with argon2id (off the event loop). Login does not reveal which emails exist (same error and same time for an unknown email),
+  and register/login are rate limited per IP (needs Redis; without it only the slow hash limits guessing).
+- Tokens are short-lived JWTs (default 8 h) sent as `Authorization: Bearer`, kept in `sessionStorage` (tab-scoped). No cookies, so no CSRF surface;
+  the trade-off is that an XSS bug could read the token, which is why user text is never injected as HTML.
+- The service API key (`X-API-Key`) still works for scripts and tests, but a signed-in non-admin is refused even if they also send it.
+- `REQUIRE_LOGIN_TO_REPORT=true` refuses anonymous reports (off by default for compatibility; turn it on in production). Reports record `reporter_id` when signed in.
+
+Not built: email verification, password reset, "remember me", multi-factor sign-in, token revocation lists (disable the user instead), audit log of admin actions.

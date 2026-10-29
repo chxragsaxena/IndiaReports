@@ -46,3 +46,26 @@ class OfficerResponse(BaseModel):
 
 class AcknowledgeRequest(BaseModel):
     token: str = Field(min_length=16, max_length=128)
+
+
+class AdminReportRow(BaseModel):
+    id: UUID
+    title: str
+    category: str
+    status: str
+    city: str
+    state: str
+    latitude: float
+    longitude: float
+    created_at: datetime | None = None
+    assigned_at: datetime | None = None
+    acknowledged_at: datetime | None = None
+    escalated_at: datetime | None = None
+    assignee_name: str | None = None
+    assignee_role: str | None = None
+
+
+class AdminReportPage(BaseModel):
+    items: list[AdminReportRow]
+    # Pass as `before` to get the next (older) page; null when there is no more.
+    next_before: datetime | None = None

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import admin, reports
+from app.api.v1.endpoints import admin, auth, reports
 
 api_router = APIRouter()
 
@@ -15,3 +15,6 @@ api_router.include_router(
     prefix="/admin",
     tags=["Admin"],
 )
+
+api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
+api_router.include_router(auth.me_router, prefix="/me", tags=["Me"])

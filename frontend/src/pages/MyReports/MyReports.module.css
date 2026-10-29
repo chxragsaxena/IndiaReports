@@ -1,0 +1,104 @@
+.page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 20px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.sub {
+    margin-top: 4px;
+    color: var(--text-2);
+}
+
+.cta {
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--brand);
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.title {
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.title:hover {
+    color: var(--brand);
+    text-decoration: underline;
+}
+
+.meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.82rem;
+    color: var(--text-3);
+}
+
+.progress {
+    font-size: 0.88rem;
+    color: var(--text-2);
+}
+
+.empty,
+.emptyBox {
+    color: var(--text-3);
+}
+
+.emptyBox {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 36px 0;
+    background: var(--surface);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+}
+
+.moreRow {
+    display: flex;
+    justify-content: center;
+}

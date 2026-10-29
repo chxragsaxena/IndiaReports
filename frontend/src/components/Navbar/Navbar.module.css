@@ -100,3 +100,51 @@
         font-size: 0.9rem;
     }
 }
+
+.account {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9rem;
+}
+
+.who {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.signOut {
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: transparent;
+    color: #fff;
+    border-radius: var(--radius-sm);
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.signOut:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.signIn {
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.signIn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 560px) {
+    .who {
+        display: none;
+    }
+}

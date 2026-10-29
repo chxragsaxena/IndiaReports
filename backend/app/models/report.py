@@ -87,6 +87,13 @@ class Report(Base, TimestampMixin):
         nullable=True,
     )
 
+    # Who filed it, when they were signed in. Null for anonymous reports.
+    reporter_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     assigned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

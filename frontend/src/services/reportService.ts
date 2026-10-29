@@ -1,11 +1,13 @@
 import axios, { isAxiosError } from "axios";
 import type { NewReport, Pin, Report } from "../types/report";
 import { API_URL } from "../config/api";
+import { attachAuth } from "./session";
 
 const api = axios.create({
     baseURL: `${API_URL}/api/v1`,
     timeout: 15000,
 });
+attachAuth(api);
 
 interface ViewportParams {
     minLat: number;
@@ -119,5 +121,11 @@ export async function getPins(
             category: params.category,
         },
     });
+    return response.data;
+}
+
+/** The signed-in person's own reports, newest first. `before` pages to older ones. */
+export async function getMyReports(before?: string | null, signal?: AbortSignal): Promise<Report[]> {
+    const response = await api.get<Report[]>("/me/reports", { signal, params: { limit: 50, before: before ?? undefined } });
     return response.data;
 }

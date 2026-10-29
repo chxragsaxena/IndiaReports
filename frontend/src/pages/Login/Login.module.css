@@ -1,0 +1,78 @@
+.wrap {
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+}
+
+.card {
+    width: min(100%, 460px);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: 28px;
+}
+
+.portals {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.portal,
+.portalActive {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: left;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    cursor: pointer;
+}
+
+.portal:hover {
+    background: var(--surface-2);
+}
+
+.portalActive {
+    border-color: var(--brand);
+    background: var(--brand-soft);
+}
+
+.portal span,
+.portalActive span {
+    font-size: 0.78rem;
+    color: var(--text-3);
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.error {
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+
+.switch {
+    font-size: 0.88rem;
+    color: var(--text-2);
+    text-align: center;
+}
+
+.link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--brand);
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}

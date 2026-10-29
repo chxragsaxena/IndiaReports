@@ -91,7 +91,8 @@ export function useLiveSocket(handlers: LiveHandlers) {
             };
 
             ws.onclose = () => {
-                socketRef.current = null;
+                // A late close from an older socket must not clear a newer one.
+                if (socketRef.current === ws) socketRef.current = null;
                 if (disposed || document.hidden) return;
                 setStatus("reconnecting");
                 const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt) * (0.5 + Math.random() / 2);

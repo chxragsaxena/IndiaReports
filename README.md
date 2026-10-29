@@ -34,7 +34,7 @@ Seeding twice does not reset analytics; use `docker compose down -v` for a clean
 | load | see `docs/LOADTEST.md` |
 
 ## Configuration
-- **report-service**: `DATABASE_URL`, `REDIS_URL` (optional), `ADMIN_API_KEY`, `ACK_SECRET`, `CORS_ORIGINS`, `ESCALATION_AFTER_SECONDS` (default 7 days),
+- **report-service**: `DATABASE_URL`, `REDIS_URL` (optional), `ADMIN_API_KEY`, `JWT_SECRET`, `REQUIRE_LOGIN_TO_REPORT`, `ACK_SECRET`, `CORS_ORIGINS`, `ESCALATION_AFTER_SECONDS` (default 7 days),
   `WEB_CONCURRENCY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `RATE_LIMIT_PER_MINUTE`.
 - **notifier**: `DATABASE_URL`, `REDIS_URL`, `TELEGRAM_BOT_TOKEN` (alerts are logged only when unset), `APP_URL`, `CORS_ORIGINS`.
 - **analytics**: `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGINS`.
@@ -46,3 +46,10 @@ Seeding twice does not reset analytics; use `docker compose down -v` for a clean
 - One Render web service per backend service, plus a Render Key Value (Redis) instance. Free tiers sleep, so the first request after idle is slow.
 - Set `ADMIN_API_KEY` (and ideally a separate `ACK_SECRET`) to long random values.
 - `frontend/vercel.json` rewrites client routes so deep links such as `/ack?...` work.
+
+## Accounts
+Citizens sign up on the site. Create the first administrator from the command line (it prompts for the password, or set `ADMIN_PASSWORD`):
+```
+docker compose run --rm --entrypoint python report-service -m scripts.create_admin you@yourdomain.org "Your Name"
+```
+Then sign in on the **Administrator** tab. Set `JWT_SECRET` to a long random value and `REQUIRE_LOGIN_TO_REPORT=true` in production.

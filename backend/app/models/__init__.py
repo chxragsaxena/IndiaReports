@@ -1,5 +1,6 @@
 from app.models.area import Area, Officer
 from app.models.outbox import OutboxEvent
 from app.models.report import Report
+from app.models.user import User
 
-__all__ = ["Report", "OutboxEvent", "Area", "Officer"]
+__all__ = ["Report", "OutboxEvent", "Area", "Officer", "User"]
