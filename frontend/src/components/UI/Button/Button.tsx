@@ -1,19 +1,34 @@
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import styles from "./Button.module.css";
 
-interface ButtonProps
-    extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    children: React.ReactNode;
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+    variant?: "primary" | "secondary" | "ghost";
+    size?: "md" | "sm";
+    loading?: boolean;
+    children: ReactNode;
 }
 
 function Button({
+    variant = "primary",
+    size = "md",
+    loading = false,
+    disabled,
+    className,
     children,
-    ...props
+    type = "button",
+    ...rest
 }: ButtonProps) {
+    const classes = [styles.button, styles[variant], styles[size], className].filter(Boolean).join(" ");
+
     return (
         <button
-            className={styles.button}
-            {...props}
+            type={type}
+            className={classes}
+            disabled={disabled || loading}
+            aria-busy={loading || undefined}
+            {...rest}
         >
+            {loading && <span className={styles.spinner} aria-hidden="true" />}
             {children}
         </button>
     );

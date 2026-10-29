@@ -1,0 +1,22 @@
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.intro {
+    color: var(--text-2);
+    font-size: 0.9rem;
+}
+
+.error {
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}

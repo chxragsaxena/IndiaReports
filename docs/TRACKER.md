@@ -20,7 +20,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 3 | notifier (Go): stream consumer, WebSocket hub (geo-tiled), subscriptions, Telegram | [x] |
 | 4 | analytics (Go): rollup consumer, hotspots + SLA endpoints | [x] |
 | 4b | Area polygons + officer assignment (PostGIS ST_Contains), acknowledge link, 7-day escalation to admin, notifier direct messages | [x] |
-| 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, XSS fix | [ ] |
+| 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, acknowledge page, XSS fix | [x] |
 | 6 | End-to-end verification, load test, README, deploy notes | [ ] |
 
 ## Log
@@ -73,3 +73,22 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   - Owner action: set `ACK_SECRET` (or `ADMIN_API_KEY`) in production; set `ADMIN_CHAT_ID`/`OFFICER_CHAT_ID` before running seed_areas to receive real alerts.
   - Frontend TODO (stage 5): `/ack?report=&token=` page that POSTs to the acknowledge endpoint.
   - Known limit: escalation is one level (officer -> admin) and happens once; the admin is not escalated further.
+- Stage 5 done (frontend redesign). Verified in a real headless browser against the live compose stack (screenshots of map, drawer,
+  insights, report form incl. validation errors, acknowledge page, mobile layouts); a report created via the API arrived in the open page
+  over WebSocket and no private fields were present in the frames. `npm run build` and `tsc --strict` are clean.
+  - New: design tokens + component library (Button/Badge/Card/fields/Toast/Modal/Skeleton), map-centric Home (filter panel, live indicator,
+    clickable stats, details drawer with accountability timeline), report form (inline validation, use-my-location, address autofill),
+    Insights (KPIs, trend chart, categories, hotspots, state leaderboard), acknowledge page, alerts dialog, 404 page.
+  - Security/robustness: popups that injected unescaped user text into HTML are gone (XSS); `alert()` replaced by toasts; stale map requests
+    are aborted; WebSocket drops when the tab is hidden and reconnects with jittered backoff; pages are code-split (map library only loads
+    on map pages); `frontend/vercel.json` rewrites client-side routes so `/ack?...` deep links from alerts do not 404.
+  - Map tiles: OpenFreeMap (free, no key) instead of the MapLibre demo tiles. Override with `VITE_MAP_STYLE`.
+  - Address autofill uses OpenStreetMap Nominatim (best effort, light use only). Swap for a self-hosted/paid geocoder at scale.
+  - Seed: `scripts.seed_reports` was broken against the current schema (no `geom`); rewritten with 30 days of history, officer assignment,
+    historical events (analytics counts them, notifier ignores them). NOTE: re-seeding does not reset analytics; use `docker compose down -v`.
+  - Compose fix: Postgres healthcheck now checks TCP (the socket check passed during first-boot init and services crashed).
+  - Google Maps: not used (cost + would require replacing the map). Optional later: Places Autocomplete on the report form behind `VITE_GOOGLE_MAPS_KEY`.
+
+## Frontend env vars (set in Vercel)
+`VITE_API_URL` (report-service), `VITE_NOTIFIER_URL`, `VITE_ANALYTICS_URL` (both optional: features hide/degrade when unset),
+`VITE_MAP_STYLE` (optional), `VITE_TELEGRAM_BOT` (optional, bot username for the alerts dialog), `VITE_ESCALATION_DAYS` (default 7).

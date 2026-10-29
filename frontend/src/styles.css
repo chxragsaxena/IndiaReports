@@ -1,0 +1,136 @@
+/* ==========================================================================
+   IndiaReports design tokens + base styles
+   ========================================================================== */
+
+:root {
+    /* Surfaces */
+    --bg: #f5f6fa;
+    --surface: #ffffff;
+    --surface-2: #f0f2f8;
+    --border: #e2e5ee;
+    --border-strong: #cdd2e0;
+
+    /* Text */
+    --text: #0f172a;
+    --text-2: #475569;
+    --text-3: #64748b;
+    --text-on-brand: #ffffff;
+
+    /* Brand */
+    --brand: #1b3a8c;
+    --brand-hover: #152e70;
+    --brand-soft: #e8edfb;
+    --saffron: #f59e0b;
+    --india-green: #138808;
+
+    /* Status (also used for map markers) */
+    --open: #dc2626;
+    --open-soft: #fee2e2;
+    --progress: #d97706;
+    --progress-soft: #fef3c7;
+    --resolved: #16a34a;
+    --resolved-soft: #dcfce7;
+
+    /* Feedback */
+    --danger: #b91c1c;
+    --focus: #2563eb;
+
+    /* Shape + depth */
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+    --shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.16);
+
+    /* Layout */
+    --nav-height: 60px;
+
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+    margin: 0;
+}
+
+h1 {
+    font-size: 1.75rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+h2 {
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    color: inherit;
+}
+
+a {
+    color: var(--brand);
+}
+
+:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+/* MapLibre popups/controls blend with the design */
+.maplibregl-ctrl-group {
+    border-radius: var(--radius-sm) !important;
+    box-shadow: var(--shadow) !important;
+}

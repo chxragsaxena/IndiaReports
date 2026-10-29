@@ -1,26 +1,39 @@
 .badge {
-
-    padding: 6px 12px;
-
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
     border-radius: 999px;
-
-    font-size: 13px;
-
+    font-size: 0.8rem;
     font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
 }
 
-.open {
-
-    background: #fee2e2;
-
-    color: #dc2626;
-
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
 }
 
-.resolved {
+.OPEN {
+    color: #991b1b;
+    background: var(--open-soft);
+}
 
-    background: #dcfce7;
+.IN_PROGRESS {
+    color: #92400e;
+    background: var(--progress-soft);
+}
 
-    color: #15803d;
+.RESOLVED {
+    color: #166534;
+    background: var(--resolved-soft);
+}
 
+.neutral {
+    color: var(--text-2);
+    background: var(--surface-2);
+    font-weight: 500;
 }

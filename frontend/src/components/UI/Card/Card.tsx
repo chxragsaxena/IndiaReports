@@ -1,14 +1,9 @@
+import type { HTMLAttributes } from "react";
 import styles from "./Card.module.css";
 
-interface CardProps {
-    children: React.ReactNode;
-}
-
-function Card({
-    children,
-}: CardProps) {
+function Card({ className, children, ...rest }: HTMLAttributes<HTMLDivElement>) {
     return (
-        <div className={styles.card}>
+        <div className={[styles.card, className].filter(Boolean).join(" ")} {...rest}>
             {children}
         </div>
     );

@@ -1,0 +1,53 @@
+.wrap {
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+}
+
+.card {
+    width: min(100%, 520px);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: 28px;
+}
+
+.card p {
+    color: var(--text-2);
+}
+
+.summary {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+    background: var(--surface-2);
+    border-radius: var(--radius);
+}
+
+.chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.where {
+    font-size: 0.85rem;
+    color: var(--text-3);
+}
+
+.ok {
+    color: var(--resolved) !important;
+    font-weight: 600;
+}
+
+.bad {
+    color: var(--danger) !important;
+    font-weight: 500;
+}

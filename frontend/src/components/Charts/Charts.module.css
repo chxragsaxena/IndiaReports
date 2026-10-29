@@ -1,0 +1,106 @@
+.figure {
+    margin: 0;
+}
+
+.svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.grid {
+    stroke: var(--border);
+    stroke-width: 1;
+}
+
+.axis {
+    fill: var(--text-3);
+    font-size: 11px;
+}
+
+.area {
+    fill: rgba(27, 58, 140, 0.1);
+}
+
+.lineCreated {
+    stroke: var(--brand);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+}
+
+.lineResolved {
+    stroke: var(--resolved);
+    stroke-width: 2.5;
+    stroke-dasharray: 6 4;
+    stroke-linejoin: round;
+}
+
+.legend {
+    display: flex;
+    gap: 18px;
+    margin-top: 8px;
+    font-size: 0.82rem;
+    color: var(--text-2);
+}
+
+.legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.keyCreated,
+.keyResolved {
+    display: inline-block;
+    width: 18px;
+    height: 0;
+    border-top: 3px solid var(--brand);
+}
+
+.keyResolved {
+    border-top: 3px dashed var(--resolved);
+}
+
+.bars {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.barRow {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) 2fr auto;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.88rem;
+}
+
+.barLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.barTrack {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+}
+
+.barFill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--brand);
+}
+
+.barValue {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-2);
+    min-width: 2.5ch;
+    text-align: right;
+}

@@ -1,21 +1,16 @@
+import { STATUS_LABEL } from "../../../types/report";
+import type { ReportStatus } from "../../../types/report";
 import styles from "./Badge.module.css";
 
-interface BadgeProps {
-    text: string;
-    type?: "open" | "resolved";
-}
-
-function Badge({
-    text,
-    type = "open",
-}: BadgeProps) {
+export function StatusBadge({ status }: { status: ReportStatus }) {
     return (
-        <span
-            className={`${styles.badge} ${styles[type]}`}
-        >
-            {text}
+        <span className={`${styles.badge} ${styles[status]}`}>
+            <span className={styles.dot} aria-hidden="true" />
+            {STATUS_LABEL[status] ?? status}
         </span>
     );
 }
 
-export default Badge;
+export function Tag({ children }: { children: string }) {
+    return <span className={`${styles.badge} ${styles.neutral}`}>{children}</span>;
+}

@@ -1,87 +1,168 @@
+import { useEffect, useState } from "react";
+
 import styles from "./ReportDetailsDrawer.module.css";
-import Badge from "../UI/Badge/Badge";
+import { StatusBadge, Tag } from "../UI/Badge/Badge";
+import Button from "../UI/Button/Button";
+import Skeleton from "../UI/Skeleton/Skeleton";
+import { useToast } from "../UI/Toast/Toast";
+import { ESCALATION_DAYS } from "../../config/api";
+import { getReport } from "../../services/reportService";
 import type { Report } from "../../types/report";
+import { formatDateTime } from "../../utils/format";
 
 interface Props {
-    report: Report | null;
-    open: boolean;
+    reportId: string | null;
     onClose: () => void;
 }
 
-function ReportDetailsDrawer({
-    report,
-    open,
-    onClose,
-}: Props) {
-    if (!report) return null;
+interface Step {
+    label: string;
+    detail?: string;
+    state: "done" | "pending" | "alert";
+}
+
+/** The accountability trail: who was told, whether they acted, and what happens next. */
+function buildTimeline(r: Report, now: number): Step[] {
+    const steps: Step[] = [{ label: "Reported", detail: formatDateTime(r.created_at), state: "done" }];
+
+    if (r.assigned_at) {
+        steps.push({ label: "Sent to the responsible officer", detail: formatDateTime(r.assigned_at), state: "done" });
+    }
+
+    if (r.acknowledged_at) {
+        steps.push({ label: "Acknowledged", detail: formatDateTime(r.acknowledged_at), state: "done" });
+    } else if (r.escalated_at) {
+        steps.push({
+            label: "Not acknowledged in time: escalated to the administrator",
+            detail: formatDateTime(r.escalated_at),
+            state: "alert",
+        });
+    } else if (r.assigned_at && r.status === "OPEN") {
+        const deadline = new Date(r.assigned_at).getTime() + ESCALATION_DAYS * 86_400_000;
+        const daysLeft = Math.ceil((deadline - now) / 86_400_000);
+        steps.push({
+            label: "Awaiting acknowledgement",
+            detail:
+                daysLeft > 0
+                    ? `Escalates to the administrator in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+                    : "Escalating to the administrator",
+            state: "pending",
+        });
+    }
+
+    if (r.status === "RESOLVED") {
+        steps.push({ label: "Resolved", detail: formatDateTime(r.updated_at), state: "done" });
+    }
+    return steps;
+}
+
+function ReportDetailsDrawer({ reportId, onClose }: Props) {
+    const toast = useToast();
+    const [state, setState] = useState<{ id: string; report?: Report; error?: boolean } | null>(null);
+
+    useEffect(() => {
+        if (!reportId) return;
+        const controller = new AbortController();
+        getReport(reportId, controller.signal)
+            .then((report) => setState({ id: reportId, report }))
+            .catch((err) => {
+                if ((err as { code?: string }).code !== "ERR_CANCELED") setState({ id: reportId, error: true });
+            });
+        return () => controller.abort();
+    }, [reportId]);
+
+    useEffect(() => {
+        if (!reportId) return;
+        const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+    }, [reportId, onClose]);
+
+    if (!reportId) return null;
+
+    const current = state && state.id === reportId ? state : null;
+    const report = current?.report;
+
+    async function copyLink() {
+        try {
+            await navigator.clipboard.writeText(`${window.location.origin}/?report=${reportId}`);
+            toast.show("Link copied", "success");
+        } catch {
+            toast.show("Could not copy the link", "error");
+        }
+    }
 
     return (
-        <div
-            className={`${styles.drawer} ${
-                open ? styles.open : ""
-            }`}
-        >
+        <aside className={styles.drawer} aria-label="Report details">
             <div className={styles.header}>
-                <h2>{report.title}</h2>
-
-                <button
-                    className={styles.closeButton}
-                    onClick={onClose}
-                >
-                    ✕
+                <div className={styles.headerText}>
+                    {report ? <h2>{report.title}</h2> : <Skeleton width="70%" height={24} />}
+                </div>
+                <button className={styles.close} onClick={onClose} aria-label="Close details">
+                    &times;
                 </button>
             </div>
 
-            <Badge
-                text={report.status}
-                type={
-                    report.status === "RESOLVED"
-                        ? "resolved"
-                        : "open"
-                }
-            />
-
-            <div className={styles.section}>
-                <h4>Category</h4>
-                <p>{report.category}</p>
-            </div>
-
-            <div className={styles.section}>
-                <h4>Description</h4>
-                <p>{report.description}</p>
-            </div>
-
-            <div className={styles.section}>
-                <h4>Address</h4>
-                <p>{report.address}</p>
-            </div>
-
-            <div className={styles.section}>
-                <h4>Landmark</h4>
-                <p>{report.landmark}</p>
-            </div>
-
-            <div className={styles.section}>
-                <h4>Location</h4>
-
-                <p>{report.city}</p>
-
-                <p>{report.district}</p>
-
-                <p>{report.state}</p>
-
-                <p>{report.pincode}</p>
-            </div>
-
-            <div className={styles.section}>
-                <h4>Coordinates</h4>
-
-                <p>
-                    {report.latitude},
-                    {report.longitude}
+            {current?.error && (
+                <p className={styles.error} role="alert">
+                    This report could not be loaded. It may have been removed.
                 </p>
-            </div>
-        </div>
+            )}
+
+            {!current && (
+                <div className={styles.skeletons}>
+                    <Skeleton width="40%" />
+                    <Skeleton />
+                    <Skeleton />
+                    <Skeleton width="60%" />
+                </div>
+            )}
+
+            {report && (
+                <div className={styles.body}>
+                    <div className={styles.chips}>
+                        <StatusBadge status={report.status} />
+                        <Tag>{report.category}</Tag>
+                    </div>
+
+                    <p className={styles.description}>{report.description}</p>
+
+                    <section>
+                        <h3>Location</h3>
+                        <p>{[report.address, report.landmark].filter(Boolean).join(", ") || "No address given"}</p>
+                        <p className={styles.muted}>
+                            {[report.city, report.district, report.state, report.pincode].filter(Boolean).join(", ")}
+                        </p>
+                    </section>
+
+                    <section>
+                        <h3>Progress</h3>
+                        <ol className={styles.timeline}>
+                            {buildTimeline(report, Date.now()).map((step) => (
+                                <li key={step.label} className={`${styles.step} ${styles[step.state]}`}>
+                                    <span className={styles.stepLabel}>{step.label}</span>
+                                    {step.detail && <span className={styles.stepDetail}>{step.detail}</span>}
+                                </li>
+                            ))}
+                        </ol>
+                    </section>
+
+                    <div className={styles.actions}>
+                        <Button variant="secondary" size="sm" onClick={copyLink}>
+                            Copy link
+                        </Button>
+                        <a
+                            className={styles.mapLink}
+                            href={`https://www.google.com/maps?q=${report.latitude},${report.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Open in Google Maps
+                        </a>
+                    </div>
+                </div>
+            )}
+        </aside>
     );
 }
 
