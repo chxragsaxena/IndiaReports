@@ -16,7 +16,7 @@ export const NOTIFIER_URL = fromEnv(import.meta.env.VITE_NOTIFIER_URL, "http://l
 export const ANALYTICS_URL = fromEnv(import.meta.env.VITE_ANALYTICS_URL, "http://localhost:8200");
 
 export const MAP_STYLE: string =
-    import.meta.env.VITE_MAP_STYLE || "https://tiles.openfreemap.org/styles/positron";
+    import.meta.env.VITE_MAP_STYLE || "https://tiles.openfreemap.org/styles/liberty";
 
 /** Days an officer has to acknowledge a report before it escalates to the admin. */
 export const ESCALATION_DAYS = Number(import.meta.env.VITE_ESCALATION_DAYS ?? 7);
