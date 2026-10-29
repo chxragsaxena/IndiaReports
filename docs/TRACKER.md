@@ -17,7 +17,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 |---|-------|--------|
 | 1 | Scaffolding: tracker, architecture doc, compose, Dockerfile | [x] |
 | 2 | report-service: status PATCH, SQL dashboard, indexes, outbox + event publishing, caching, rate limit | [x] |
-| 3 | notifier (Go): stream consumer, WebSocket hub (geo-tiled), subscriptions, Telegram | [ ] |
+| 3 | notifier (Go): stream consumer, WebSocket hub (geo-tiled), subscriptions, Telegram | [x] |
 | 4 | analytics (Go): rollup consumer, hotspots + SLA endpoints | [ ] |
 | 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, XSS fix | [ ] |
 | 6 | End-to-end verification, load test, README, deploy notes | [ ] |
@@ -53,3 +53,10 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
 - Without `REDIS_URL` everything works as before; events accumulate in `outbox_events` and are published once Redis is configured.
 - Run `alembic upgrade head` on the Render database. If that database was NOT created by alembic, stamp it first
   (`alembic stamp e1e34496a6ba`) so the first two migrations are not re-run.
+- Stage 3 done (notifier). Unit tests pass with `-race`; integration test passes against the live compose stack.
+  - Verified end to end: report -> outbox -> Redis stream -> notifier. Mumbai viewer got the pin live, India-wide viewer got a throttled
+    `refresh`, Delhi viewer got nothing, matching subscriber delivered exactly once, out-of-area subscriber not notified.
+  - Design: live reader (every instance sees every event, feeds its own WebSocket clients) + consumer group (each event alerted once
+    across instances, XAUTOCLAIM recovery, dead-letter stream). Geo-tile fan-out (1 degree tiles), slow clients dropped, connection cap.
+  - Protocol docs: `services/notifier/README.md`.
+  - Known limit: Telegram can only message users who started the bot. No per-user auth on subscriptions (chat_id is the identity).
