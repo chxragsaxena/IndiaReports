@@ -8,7 +8,7 @@ interface TokenResponse {
     user: AuthUser;
 }
 
-const client = axios.create({ baseURL: `${API_URL}/api/v1/auth`, timeout: 15000 });
+const client = axios.create({ baseURL: `${API_URL}/api/v1/auth`, timeout: 60000 });
 
 function toSession(data: TokenResponse): Session {
     return { token: data.access_token, user: data.user, expiresAt: Date.now() + data.expires_in * 1000 };

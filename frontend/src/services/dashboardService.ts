@@ -14,7 +14,7 @@ export interface DashboardData {
 export async function getDashboard(signal?: AbortSignal): Promise<DashboardData> {
     const response = await axios.get<DashboardData>(`${API_URL}/api/v1/reports/dashboard`, {
         signal,
-        timeout: 15000,
+        timeout: 60000,
     });
     return { ...response.data, by_category: response.data.by_category ?? {} };
 }

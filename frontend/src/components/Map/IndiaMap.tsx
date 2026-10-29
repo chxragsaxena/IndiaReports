@@ -29,6 +29,8 @@ interface IndiaMapProps {
     selectedId: string | null;
     onSelect: (id: string | null) => void;
     onLiveStatus: (status: LiveStatus) => void;
+    /** Whether the reports for this view are loading, loaded, or could not be fetched. */
+    onDataState?: (state: "loading" | "ready" | "error") => void;
     initialView?: MapView;
 }
 
@@ -48,6 +50,7 @@ function IndiaMap({
     selectedId,
     onSelect,
     onLiveStatus,
+    onDataState,
     initialView,
 }: IndiaMapProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -56,6 +59,8 @@ function IndiaMap({
     // Latest props/state for callbacks that outlive a render (map events, sockets).
     const filtersRef = useRef({ status: statusFilter, category: categoryFilter });
     const onSelectRef = useRef(onSelect);
+    const onDataStateRef = useRef<(s: "loading" | "ready" | "error") => void>(() => undefined);
+    const retryRef = useRef<number | null>(null);
     const lastKeyRef = useRef("");
     const requestRef = useRef<AbortController | null>(null);
     const debounceRef = useRef<number | null>(null);
@@ -66,6 +71,7 @@ function IndiaMap({
     useEffect(() => {
         filtersRef.current = { status: statusFilter, category: categoryFilter };
         onSelectRef.current = onSelect;
+        onDataStateRef.current = onDataState ?? (() => undefined);
     });
 
     const matchesFilters = useCallback((status: string | undefined, category: string) => {
@@ -101,6 +107,8 @@ function IndiaMap({
         requestRef.current?.abort();
         const controller = new AbortController();
         requestRef.current = controller;
+        onDataStateRef.current("loading");
+        if (retryRef.current) window.clearTimeout(retryRef.current);
 
         const filters = {
             status: status === "ALL" ? undefined : status,
@@ -124,10 +132,15 @@ function IndiaMap({
                 pins.setData(toCollection([...pinsRef.current.values()]));
                 clusters.setData({ type: "FeatureCollection", features: [] });
             }
+            onDataStateRef.current("ready");
         } catch (err) {
             if ((err as { code?: string }).code !== "ERR_CANCELED") {
                 lastKeyRef.current = ""; // allow a retry on the next move
                 console.error(err);
+                // Say so, and keep trying: a sleeping server usually answers on the next attempt.
+                onDataStateRef.current("error");
+                if (retryRef.current) window.clearTimeout(retryRef.current);
+                retryRef.current = window.setTimeout(() => void loadViewport(map), 6000);
             }
         }
     }, []);
@@ -329,6 +342,7 @@ function IndiaMap({
             if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
             frameRef.current = null;
             requestRef.current?.abort();
+            if (retryRef.current) window.clearTimeout(retryRef.current);
             map.remove();
             mapRef.current = null;
         };

@@ -5,7 +5,8 @@ import { attachAuth } from "./session";
 
 const api = axios.create({
     baseURL: `${API_URL}/api/v1`,
-    timeout: 15000,
+    // A free-tier server can take close to a minute to wake up; do not give up before it does.
+    timeout: 60000,
 });
 attachAuth(api);
 
@@ -110,18 +111,44 @@ export async function getPins(
     params: ViewportParams & FilterParams,
     signal?: AbortSignal,
 ): Promise<PinsResult> {
-    const response = await api.get<PinsResult>("/reports/pins", {
-        signal,
-        params: {
-            min_lat: params.minLat,
-            max_lat: params.maxLat,
-            min_lng: params.minLng,
-            max_lng: params.maxLng,
-            status: params.status,
-            category: params.category,
-        },
-    });
-    return response.data;
+    if (pinsEndpointMissing) return legacyPins(params, signal);
+    try {
+        const response = await api.get<PinsResult>("/reports/pins", {
+            signal,
+            params: {
+                min_lat: params.minLat,
+                max_lat: params.maxLat,
+                min_lng: params.minLng,
+                max_lng: params.maxLng,
+                status: params.status,
+                category: params.category,
+            },
+        });
+        return response.data;
+    } catch (err) {
+        // A backend that has not been updated yet has no /pins. Fall back to the full-record
+        // list it does have, so the map still shows reports instead of going blank.
+        if (isAxiosError(err) && err.response?.status === 404) {
+            pinsEndpointMissing = true;
+            return legacyPins(params, signal);
+        }
+        throw err;
+    }
+}
+
+let pinsEndpointMissing = false;
+
+async function legacyPins(params: ViewportParams & FilterParams, signal?: AbortSignal): Promise<PinsResult> {
+    const reports = await getReports(params, signal);
+    return {
+        truncated: reports.length >= 500,
+        pins: reports.slice(0, 500).map((r) => ({
+            id: r.id,
+            status: r.status,
+            latitude: r.latitude,
+            longitude: r.longitude,
+        })),
+    };
 }
 
 /** The signed-in person's own reports, newest first. `before` pages to older ones. */

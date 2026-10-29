@@ -54,6 +54,17 @@ function Home() {
     const [panelOpen, setPanelOpen] = useState(false);
     const [alertsOpen, setAlertsOpen] = useState(false);
     const [liveStatus, setLiveStatus] = useState<LiveStatus>("off");
+    const [dataState, setDataState] = useState<"loading" | "ready" | "error">("loading");
+    // Only mention a slow load once it really is slow: quick loads should not flash a message.
+    const [slow, setSlow] = useState(false);
+    useEffect(() => {
+        if (dataState !== "loading") {
+            setSlow(false);
+            return;
+        }
+        const timer = window.setTimeout(() => setSlow(true), 3000);
+        return () => window.clearTimeout(timer);
+    }, [dataState]);
     const [stats, setStats] = useState<DashboardData | null>(null);
 
     const selectedId = params.get("report");
@@ -97,8 +108,17 @@ function Home() {
                 selectedId={selectedId}
                 onSelect={select}
                 onLiveStatus={setLiveStatus}
+                onDataState={setDataState}
                 initialView={initialView}
             />
+
+            {(dataState === "error" || (dataState === "loading" && slow)) && (
+                <div className={styles.banner} role="status">
+                    {dataState === "error"
+                        ? "Could not load reports. Trying again..."
+                        : "Loading reports. The server may take up to a minute to wake up."}
+                </div>
+            )}
 
             <section className={`${styles.panel} ${panelOpen ? styles.panelOpen : ""}`} aria-label="Filters and statistics">
                 <button

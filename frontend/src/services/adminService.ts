@@ -5,7 +5,7 @@ import { attachAuth } from "./session";
 
 // Authentication comes from the signed-in session (see session.ts); the server
 // accepts these calls only from an administrator.
-const client = axios.create({ baseURL: `${API_URL}/api/v1`, timeout: 15000 });
+const client = axios.create({ baseURL: `${API_URL}/api/v1`, timeout: 60000 });
 attachAuth(client);
 
 export interface AdminReport {
