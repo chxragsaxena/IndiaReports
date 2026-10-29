@@ -55,7 +55,7 @@ docker compose run --rm --entrypoint python report-service -m scripts.create_adm
 Then sign in on the **Administrator** tab. Set `JWT_SECRET` to a long random value and `REQUIRE_LOGIN_TO_REPORT=true` in production.
 
 ## Photos and AI analysis
-Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
+Copy `.env.example` to `.env` to see every setting. Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
 An open-source vision model looks at each photo and reports findings to the administrator (what it shows, severity, hazards, whether the category fits,
 a suggested action). Serious findings (high or critical severity, or inappropriate content) also message the admin on Telegram.
 
