@@ -1,19 +1,120 @@
 .wrap {
+    position: relative;
+    min-height: 100%;
     display: flex;
+    align-items: center;
     justify-content: center;
     padding: 40px 16px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #0f2257 0%, #1b3a8c 55%, #274aa8 100%);
+}
+
+/* The map sits behind everything; the veil tints it so it reads as a background, not a control. */
+.map {
+    position: absolute;
+    inset: 0;
+    opacity: 0.9;
+    filter: saturate(0.55) brightness(0.9);
+}
+
+.mapInner {
+    width: 100%;
+    height: 100%;
+}
+
+.veil {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(90deg, rgba(15, 34, 87, 0.92) 0%, rgba(15, 34, 87, 0.7) 38%, rgba(27, 58, 140, 0.25) 70%, rgba(27, 58, 140, 0.4) 100%),
+        linear-gradient(180deg, rgba(15, 34, 87, 0.25), rgba(15, 34, 87, 0.35));
+    pointer-events: none;
+}
+
+.content {
+    position: relative;
+    width: min(100%, 1020px);
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 440px);
+    gap: 56px;
+    align-items: center;
+}
+
+.pitch {
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.flag {
+    width: 56px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--saffron) 0 33%, #fff 33% 66%, var(--india-green) 66% 100%);
+}
+
+.pitch h2 {
+    font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+}
+
+.pitch p {
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.82);
+    max-width: 46ch;
+}
+
+.pitch ul {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pitch li {
+    position: relative;
+    padding-left: 26px;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.pitch li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.45em;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--saffron);
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.25);
 }
 
 .card {
-    width: min(100%, 460px);
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 18px;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.6);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-lg);
     padding: 28px;
+}
+
+@media (max-width: 860px) {
+    .content {
+        grid-template-columns: 1fr;
+        gap: 28px;
+    }
+
+    .pitch ul {
+        display: none;
+    }
 }
 
 .portals {

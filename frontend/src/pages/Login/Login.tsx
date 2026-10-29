@@ -7,6 +7,7 @@ import Button from "../../components/UI/Button/Button";
 import { TextField } from "../../components/UI/Input/Input";
 import { apiErrorMessage } from "../../services/reportService";
 import type { Role } from "../../services/session";
+import BackdropMap from "./BackdropMap";
 import styles from "./Login.module.css";
 
 type Portal = "citizen" | "admin";
@@ -69,6 +70,21 @@ function Login() {
 
     return (
         <div className={styles.wrap}>
+            <BackdropMap />
+            <div className={styles.veil} aria-hidden="true" />
+
+            <div className={styles.content}>
+                <section className={styles.pitch}>
+                    <span className={styles.flag} aria-hidden="true" />
+                    <h2>See what needs fixing, anywhere in India.</h2>
+                    <p>Report a pothole, a broken light or a blocked drain on the map, and follow it until it is resolved.</p>
+                    <ul>
+                        <li>Pin issues to the exact spot</li>
+                        <li>Reports go to the officer for that area</li>
+                        <li>Unanswered for 7 days? It goes to the administrator</li>
+                    </ul>
+                </section>
+
             <div className={styles.card}>
                 <h1>{signingUp ? "Create your account" : "Sign in"}</h1>
 
@@ -139,6 +155,7 @@ function Login() {
                 ) : (
                     <p className={styles.switch}>Administrator accounts are created by an existing administrator.</p>
                 )}
+            </div>
             </div>
         </div>
     );
