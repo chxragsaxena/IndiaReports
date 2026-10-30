@@ -126,7 +126,7 @@ def parse_findings(text: str) -> RawFindings:
         raise ValueError(problems) from e
 
 
-def strict_schema() -> dict:
+def strict_schema(model=RawFindings) -> dict:
     """The findings schema in the form strict structured-output servers accept: every property
     required, no extra properties, no decorative keywords."""
 
@@ -141,7 +141,7 @@ def strict_schema() -> dict:
             return [tidy(v) for v in node]
         return node
 
-    return tidy(RawFindings.model_json_schema())
+    return tidy(model.model_json_schema())
 
 
 def retry_delay(headers: httpx.Headers, message: str) -> float:
@@ -184,11 +184,17 @@ class OpenAICompatibleAnalyzer:
         api_key: str | None = None,
         model: str | None = None,
         strict: bool = False,
+        schema: dict | None = None,
+        extra: dict | None = None,
+        max_tokens: int = 1200,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self.provider = provider
         self.model = model or settings.ANALYSIS_MODEL or OLLAMA_DEFAULT_MODEL
         self._strict = strict
+        self._schema = schema
+        self._extra = extra or {}
+        self._max_tokens = max_tokens
         self._sleep = sleep
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = client or httpx.AsyncClient(
@@ -218,12 +224,13 @@ class OpenAICompatibleAnalyzer:
             "model": self.model,
             "messages": messages,
             "temperature": 0.1,  # a stable assessment, not creativity
-            "max_tokens": 1200,
+            "max_tokens": self._max_tokens,
+            **self._extra,
         }
         if structured:
             payload["response_format"] = {
                 "type": "json_schema",
-                "json_schema": {"name": "findings", "strict": self._strict, "schema": strict_schema()},
+                "json_schema": {"name": "findings", "strict": self._strict, "schema": self._schema or strict_schema()},
             }
         response = await self._post(payload)
 

@@ -89,3 +89,56 @@ async def record_analysis(image_id: uuid.UUID, body: AnalysisResult, db: AsyncSe
         add_event(db, "ReportImageAnalyzed", payload)
     await db.commit()
     return {"ok": True}
+
+
+class TriageResult(BaseModel):
+    status: Literal["done", "failed"]
+    triage: dict | None = None
+    error: str | None = Field(default=None, max_length=500)
+
+
+def _bounded(value, limit: int) -> str:
+    return " ".join(str(value).split())[:limit]
+
+
+def _clean_triage(raw: dict) -> dict | None:
+    """Keep only the fields we know, bounded: this came from a model reading public text."""
+    urgency = raw.get("urgency")
+    if urgency not in SEVERITIES:
+        return None
+    try:
+        confidence = min(1.0, max(0.0, float(raw.get("confidence", 0))))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    return {
+        "language": _bounded(raw.get("language", "English"), 40) or "English",
+        "title_en": _bounded(raw.get("title_en", ""), 200),
+        "description_en": _bounded(raw.get("description_en", ""), 2000),
+        "suggested_category": _bounded(raw.get("suggested_category", ""), 40),
+        "category_matches_report": bool(raw.get("category_matches_report", True)),
+        "urgency": urgency,
+        "is_spam": bool(raw.get("is_spam", False)),
+        "spam_reason": _bounded(raw.get("spam_reason", ""), 200),
+        "summary": _bounded(raw.get("summary", ""), 300),
+        "confidence": confidence,
+        "provider": _bounded(raw.get("provider", ""), 20),
+        "model": _bounded(raw.get("model", ""), 80),
+    }
+
+
+@router.post("/reports/{report_id}/triage")
+async def record_triage(report_id: uuid.UUID, body: TriageResult, db: AsyncSession = Depends(get_db)):
+    """The ai-service reports what it made of a report's text. Safe to repeat: a report that
+    already has a triage keeps it."""
+    report = await db.get(Report, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    if report.triaged_at is not None or body.status == "failed":
+        return {"ok": True, "ignored": report.triaged_at is not None}
+    triage = _clean_triage(body.triage or {})
+    if triage is None:
+        raise HTTPException(status_code=422, detail="A finished triage needs a valid urgency.")
+    report.triage = triage
+    report.triaged_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"ok": True}

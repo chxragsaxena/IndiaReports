@@ -35,7 +35,7 @@ async def test_create_writes_outbox_event_in_same_transaction(client):
     await client.post("/api/v1/reports/", json=sample_report())
     async with engine.connect() as conn:
         rows = (await conn.execute(text("SELECT event_type, published_at FROM outbox_events"))).all()
-    assert [r.event_type for r in rows] == ["ReportCreated"]
+    assert [r.event_type for r in rows] == ["ReportCreated", "ReportTriageRequested"]
     assert rows[0].published_at is None
 
 
@@ -66,7 +66,7 @@ async def test_status_change_emits_event_once(client):
             r.event_type
             for r in (await conn.execute(text("SELECT event_type FROM outbox_events ORDER BY id"))).all()
         ]
-    assert types == ["ReportCreated", "ReportStatusChanged"]
+    assert types == ["ReportCreated", "ReportTriageRequested", "ReportStatusChanged"]
 
 
 async def test_status_change_404(client):
@@ -292,7 +292,7 @@ async def test_rollup_is_applied_exactly_once_per_event(client):
         r = await client.post("/api/v1/reports/", json=sample_report(title=f"Report {i}"))
         assert r.status_code == 201
 
-    assert await rollup_once() == 3
+    assert await rollup_once() == 6  # each report queues a created event and a triage request
     assert await rollup_once() == 0  # nothing is applied twice
 
     async with engine.connect() as conn:

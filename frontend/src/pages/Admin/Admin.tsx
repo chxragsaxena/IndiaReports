@@ -231,6 +231,8 @@ function Admin() {
                                                         ? `${r.image_count} photo${r.image_count === 1 ? "" : "s"}`
                                                         : "Details"}
                                                 </button>
+                                                {r.ai_spam && <span className={styles.spam}>Possible spam</span>}
+                                                {r.language && <span className={styles.muted}>{r.language}</span>}
                                                 {r.ai_severity ? (
                                                     <SeverityBadge severity={r.ai_severity} prefix="AI:" />
                                                 ) : r.ai_pending ? (

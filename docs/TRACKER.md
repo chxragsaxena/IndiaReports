@@ -23,6 +23,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, acknowledge page, XSS fix | [x] |
 | 6 | End-to-end verification, load test, README, deploy notes | [x] |
 | 7 | ai-service extracted (stream consumer, internal results endpoint, tests) | [x] |
+| 8 | Text triage: language, translation, urgency, spam (separate small text model) | [x] |
 
 ## Log
 - Stage 1 started: cloned repo to working folder, created `microservices` branch.

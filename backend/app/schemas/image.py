@@ -47,3 +47,4 @@ class AdminReportDetail(BaseModel):
     assignee_name: str | None = None
     images: list[AdminImage]
     analysis_enabled: bool
+    triage: dict | None = None  # what the ai-service made of the text; staff only

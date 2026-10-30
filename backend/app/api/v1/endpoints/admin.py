@@ -38,6 +38,11 @@ router = APIRouter(dependencies=[Depends(require_staff)])
 main_only = [Depends(require_admin)]
 
 
+def _foreign_language(triage: dict | None) -> str | None:
+    language = (triage or {}).get("language")
+    return language if language and language.lower() != "english" else None
+
+
 def _due_at(report: Report) -> datetime | None:
     """When the responsible officer must resolve it by. None once resolved or escalated."""
     if report.status == "RESOLVED" or report.escalated_at is not None or report.assigned_at is None:
@@ -265,6 +270,8 @@ async def list_reports_for_admin(
                 resolution_note=r.resolution_note, due_at=due, overdue=bool(due and due <= now),
                 assignee_name=name, assignee_role=role,
                 image_count=count, ai_severity=worst, ai_pending=pending,
+                ai_urgency=(r.triage or {}).get("urgency"), ai_spam=bool((r.triage or {}).get("is_spam")),
+                language=_foreign_language(r.triage),
             )
         )
     next_before = page[-1][0].created_at if len(rows) > limit and page else None
@@ -312,7 +319,7 @@ async def report_detail(
         acknowledged_at=report.acknowledged_at, escalated_at=report.escalated_at,
         resolved_at=report.resolved_at, resolution_note=report.resolution_note,
         assignee_name=assignee.name if assignee else None,
-        analysis_enabled=analysis_enabled(),
+        analysis_enabled=analysis_enabled(), triage=report.triage,
         images=[
             AdminImage(
                 id=i.id,

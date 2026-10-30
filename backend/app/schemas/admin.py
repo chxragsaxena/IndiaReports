@@ -99,6 +99,9 @@ class AdminReportRow(BaseModel):
     image_count: int = 0
     ai_severity: str | None = None  # the most serious finding across the photos
     ai_pending: bool = False  # some photos are still waiting for analysis
+    ai_urgency: str | None = None  # from the text triage
+    ai_spam: bool = False  # the text triage thinks this may be spam
+    language: str | None = None  # the language the report was written in, when not English
 
 
 class AdminReportPage(BaseModel):

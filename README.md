@@ -82,6 +82,15 @@ With none set, no email is sent and nothing else changes. Failed emails are retr
 Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
 An open-weight vision model looks at each photo and reports findings to the administrator (what it shows, severity, hazards, whether the category fits,
 a suggested action). Serious findings (high or critical severity, or inappropriate content) also message the admin on Telegram.
+**Different open models for different jobs** (each set by its own env var, so a slow one never holds up another):
+
+| Job | Default model (Groq) | Setting |
+|---|---|---|
+| Photo analysis | `qwen/qwen3.8-27b` (vision) | `ANALYSIS_MODEL` |
+| Report text: language, English translation, urgency, spam | `openai/gpt-oss-20b` (small, fast) | `TRIAGE_MODEL` |
+
+A staff member sees the translation, urgency and a possible-spam flag next to each report. The model is told to treat report text as untrusted data, and its output is bounded before it is stored.
+
 This runs in its own service, **ai-service** (`services/ai`), which reads upload events from the Redis stream and posts findings back to the report-service
 (set the same `INTERNAL_API_KEY` on both). If it is down, uploads still work and photos wait for findings.
 Copy `.env.example` to `.env` to see every setting.

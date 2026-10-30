@@ -30,8 +30,14 @@ class ReportServiceClient:
         )
 
     async def send_analysis(self, image_id: str, body: dict) -> None:
+        await self._post(f"/api/v1/internal/images/{image_id}/analysis", body)
+
+    async def send_triage(self, report_id: str, body: dict) -> None:
+        await self._post(f"/api/v1/internal/reports/{report_id}/triage", body)
+
+    async def _post(self, path: str, body: dict) -> None:
         try:
-            response = await self._client.post(f"/api/v1/internal/images/{image_id}/analysis", json=body)
+            response = await self._client.post(path, json=body)
         except httpx.HTTPError as e:
             raise Unavailable(f"report-service unreachable: {e.__class__.__name__}") from e
         if response.status_code >= 500 or response.status_code in (408, 429):

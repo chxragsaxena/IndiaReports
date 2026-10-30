@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { StatusBadge, SeverityBadge, Tag } from "../UI/Badge/Badge";
 import Skeleton from "../UI/Skeleton/Skeleton";
 import { getAdminReport } from "../../services/adminService";
-import type { AdminImage, AdminReportDetail as Detail } from "../../services/adminService";
+import type { AdminImage, AdminReportDetail as Detail, Triage } from "../../services/adminService";
 import { formatDateTime } from "../../utils/format";
 import styles from "./AdminReportDetail.module.css";
 
@@ -19,6 +19,35 @@ const FLAG_LABEL: Record<string, string> = {
     screenshot_or_stock_photo: "Screenshot or stock photo",
     likely_unrelated: "Probably not a civic issue",
 };
+
+function TriagePanel({ triage }: { triage: Triage }) {
+    const translated = triage.language.toLowerCase() !== "english";
+    return (
+        <div className={styles.finding}>
+            <div className={styles.findingHead}>
+                <SeverityBadge severity={triage.urgency} prefix="Urgency:" />
+                <span className={styles.muted}>{triage.language} &middot; {Math.round(triage.confidence * 100)}% confidence</span>
+            </div>
+            <p>{triage.summary}</p>
+            {triage.is_spam && (
+                <p className={styles.warn}>This may be spam{triage.spam_reason ? `: ${triage.spam_reason}` : "."}</p>
+            )}
+            {!triage.category_matches_report && (
+                <p className={styles.warn}>The text reads more like &ldquo;{triage.suggested_category}&rdquo; than the chosen category.</p>
+            )}
+            {translated && (
+                <p className={styles.muted}>
+                    In English: <strong>{triage.title_en}</strong>. {triage.description_en}
+                </p>
+            )}
+            {triage.provider !== "mock" ? (
+                <p className={styles.fine}>Read by {triage.model}. An assistive check from an open-weight model, so verify before acting.</p>
+            ) : (
+                <p className={styles.demo}>Demo output: no text model is configured.</p>
+            )}
+        </div>
+    );
+}
 
 function Finding({ image }: { image: AdminImage }) {
     const f = image.findings;
@@ -134,6 +163,7 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                         <span className={styles.muted}>{formatDateTime(detail.created_at)}</span>
                     </div>
                     <p className={styles.description}>{detail.description}</p>
+                    {detail.triage && <TriagePanel triage={detail.triage} />}
                     <p className={styles.muted}>
                         {[detail.address, detail.city, detail.district, detail.state, detail.pincode].filter(Boolean).join(", ")}
                     </p>

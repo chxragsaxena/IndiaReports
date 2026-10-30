@@ -112,6 +112,12 @@
     color: var(--text-3);
 }
 
+.spam {
+    color: var(--warn, #b45309);
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
 .ok {
     color: var(--resolved);
     font-weight: 600;

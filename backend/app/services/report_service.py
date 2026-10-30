@@ -83,6 +83,12 @@ class ReportService:
         # here: updating shared cell rows in every request would make all writes in one
         # area queue on the same locks.
         add_event(db, "ReportCreated", report_created_payload(db_report, recipient))
+        # The text goes to the ai-service on its own event: ReportCreated is broadcast to the live
+        # map, which has no business carrying the description.
+        add_event(db, "ReportTriageRequested", {
+            "report_id": str(db_report.id), "title": db_report.title,
+            "description": db_report.description, "category": db_report.category,
+        })
 
         # Tell the responsible officer by email too, if they have an account.
         if assignee is not None and assignee.user_id is not None:

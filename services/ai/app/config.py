@@ -28,10 +28,14 @@ class Settings(BaseSettings):
     ANALYSIS_BASE_URL: str | None = None
     ANALYSIS_API_KEY: str | None = None
     ANALYSIS_MODEL: str = ""
+    # The model for reading report text (language, translation, urgency, spam). Empty picks a small
+    # fast open-weight text model: gpt-oss-20b on Groq, qwen3:4b on Ollama.
+    TRIAGE_MODEL: str = ""
     ANALYSIS_TIMEOUT_SECONDS: float = 240.0
     ANALYSIS_CONCURRENCY: int = 1
     ANALYSIS_MAX_PER_DAY: int = 2000
     ANALYSIS_MAX_ATTEMPTS: int = 3
+    TRIAGE_MAX_PER_DAY: int = 20000
 
 
 settings = Settings()

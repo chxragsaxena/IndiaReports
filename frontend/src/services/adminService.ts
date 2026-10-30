@@ -32,6 +32,9 @@ export interface AdminReport {
     image_count: number;
     ai_severity: Severity | null;
     ai_pending: boolean;
+    ai_urgency: Severity | null;
+    ai_spam: boolean;
+    language: string | null;
 }
 
 export interface AdminReportPage {
@@ -176,6 +179,23 @@ export interface AdminReportDetail {
     assignee_name: string | null;
     images: AdminImage[];
     analysis_enabled: boolean;
+    triage: Triage | null;
+}
+
+/** What the ai-service made of the report text. Assistive, for staff only. */
+export interface Triage {
+    language: string;
+    title_en: string;
+    description_en: string;
+    suggested_category: string;
+    category_matches_report: boolean;
+    urgency: Severity;
+    is_spam: boolean;
+    spam_reason: string;
+    summary: string;
+    confidence: number;
+    provider: string;
+    model: string;
 }
 
 export async function getAdminReport(id: string, signal?: AbortSignal): Promise<AdminReportDetail> {

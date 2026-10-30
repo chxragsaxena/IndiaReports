@@ -5,7 +5,7 @@ from geoalchemy2 import Geometry
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -119,3 +119,8 @@ class Report(Base, TimestampMixin):
     # Set once a resolved report has left the public map. It stays in the database and in
     # the reporter's and officers' lists; it is just no longer drawn or counted.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # What the ai-service made of the report text (language, English translation, urgency, spam
+    # likelihood). Assistive and for staff only: never shown to the public or the reporter.
+    triage: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

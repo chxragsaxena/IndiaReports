@@ -8,6 +8,7 @@ import redis.asyncio as aioredis
 from app import worker
 from app.analysis.analyzer import AnalysisError
 from app.analysis.schema import Findings
+from app.analysis.triage import Triage
 from app.config import settings
 from app.reporting import Rejected, Unavailable
 
@@ -49,6 +50,8 @@ class FakeReporter:
         if self.error:
             raise self.error
         self.sent.append((image_id, body))
+
+    send_triage = send_analysis
 
 
 @pytest.fixture
@@ -159,3 +162,65 @@ async def test_the_daily_cap_stops_analysis(redis, monkeypatch):
     assert statuses == ["done", "failed"] and analyzer.calls == 1
     assert "daily" in next(b["error"] for _, b in reporter.sent if b["status"] == "failed")
     await redis.delete(*await redis.keys("ai:analyses:*"))
+
+
+# ---- text triage --------------------------------------------------------------------------
+
+REPORT = str(uuid.uuid4())
+
+
+class FakeTriager:
+    provider, model = "fake", "fake-text"
+
+    def __init__(self, error=None):
+        self.error, self.calls = error, []
+
+    async def triage(self, ctx):
+        self.calls.append(ctx)
+        if self.error:
+            raise self.error
+        return Triage(
+            language="Hindi", title_en="Deep pothole", description_en="A deep pothole near the school.",
+            suggested_category="Road", category_matches_report=True, urgency="high", is_spam=False,
+            spam_reason="", summary="Deep pothole near a school.", confidence=0.9,
+        )
+
+
+async def publish_triage(redis, **data):
+    payload = {"report_id": REPORT, "title": "गहरा गड्ढा", "description": "स्कूल के पास", "category": "Road"} | data
+    await redis.xadd(settings.EVENT_STREAM, {"event_id": "2", "type": "ReportTriageRequested", "data": json.dumps(payload)})
+
+
+async def test_report_text_is_triaged_and_the_result_sent(redis):
+    await publish_triage(redis)
+    triager, reporter = FakeTriager(), FakeReporter()
+    await worker.process_once(redis, None, None, reporter, block_ms=50, triager=triager)
+    (report_id, body), = reporter.sent
+    assert report_id == REPORT and body["status"] == "done"
+    assert body["triage"]["language"] == "Hindi" and body["triage"]["urgency"] == "high"
+    assert body["triage"]["provider"] == "fake" and body["triage"]["model"] == "fake-text"
+    assert triager.calls[0].title == "गहरा गड्ढा" and await pending(redis) == 0
+
+
+async def test_triage_is_skipped_when_no_text_model_is_configured(redis):
+    await publish_triage(redis)
+    reporter = FakeReporter()
+    await worker.process_once(redis, None, None, reporter, block_ms=50, triager=None)
+    assert reporter.sent == [] and await pending(redis) == 0
+
+
+async def test_a_failing_triage_retries_then_is_reported_as_failed(redis, monkeypatch):
+    monkeypatch.setattr(settings, "ANALYSIS_MAX_ATTEMPTS", 2)
+    await publish_triage(redis)
+    triager, reporter = FakeTriager(error=AnalysisError("busy", retryable=True)), FakeReporter()
+    for _ in range(2):
+        await worker.process_once(redis, None, None, reporter, block_ms=50, triager=triager)
+    (_, body), = reporter.sent
+    assert body["status"] == "failed" and body["attempts"] == 2 and await pending(redis) == 0
+
+
+async def test_photo_events_are_left_alone_when_only_text_triage_is_on(redis):
+    await publish(redis)
+    reporter = FakeReporter()
+    await worker.process_once(redis, None, None, reporter, block_ms=50, triager=FakeTriager())
+    assert reporter.sent == []
