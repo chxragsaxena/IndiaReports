@@ -51,7 +51,7 @@ class FakeReporter:
             raise self.error
         self.sent.append((image_id, body))
 
-    send_triage = send_analysis
+    send_triage = send_verification = send_analysis
 
 
 @pytest.fixture
@@ -224,3 +224,66 @@ async def test_photo_events_are_left_alone_when_only_text_triage_is_on(redis):
     reporter = FakeReporter()
     await worker.process_once(redis, None, None, reporter, block_ms=50, triager=FakeTriager())
     assert reporter.sent == []
+
+
+# ---- before/after fix verification -------------------------------------------------------
+
+
+class FakeVerifier:
+    provider, model = "fake", "fake-vision"
+
+    def __init__(self, error=None):
+        self.error, self.calls = error, []
+
+    async def verify(self, after, after_type, ctx, before=None, before_type="image/jpeg"):
+        self.calls.append((after, before))
+        if self.error:
+            raise self.error
+        from app.analysis.verifier import Verification
+
+        return Verification(
+            verdict="fixed", same_location=True, compared_with_original=before is not None,
+            summary="Filled in.", remaining_issues=[], confidence=0.9,
+        )
+
+
+class KeyedStore:
+    async def get(self, key):
+        return key.encode()
+
+
+async def test_a_repair_photo_is_compared_with_the_original_and_the_verdict_sent(redis):
+    await publish(redis, kind="FixPhotoUploaded", storage_key="reports/x/fix.jpg", before_key="reports/x/before.jpg")
+    verifier, reporter = FakeVerifier(), FakeReporter()
+    await worker.process_once(redis, None, KeyedStore(), reporter, block_ms=50, verifier=verifier)
+    assert verifier.calls == [(b"reports/x/fix.jpg", b"reports/x/before.jpg")]
+    (image_id, body), = reporter.sent
+    assert image_id == IMAGE and body["status"] == "done" and body["verification"]["verdict"] == "fixed"
+    assert body["provider"] == "fake" and body["verification"]["compared_with_original"] is True
+    assert await pending(redis) == 0
+
+
+async def test_a_repair_photo_with_no_original_is_still_judged(redis):
+    await publish(redis, kind="FixPhotoUploaded", storage_key="reports/x/fix.jpg", before_key=None)
+    verifier, reporter = FakeVerifier(), FakeReporter()
+    await worker.process_once(redis, None, KeyedStore(), reporter, block_ms=50, verifier=verifier)
+    assert verifier.calls == [(b"reports/x/fix.jpg", None)]
+    assert reporter.sent[0][1]["verification"]["compared_with_original"] is False
+
+
+async def test_repair_photos_wait_when_verification_is_off(redis):
+    await publish(redis, kind="FixPhotoUploaded", before_key=None)
+    reporter = FakeReporter()
+    await worker.process_once(redis, FakeAnalyzer(), KeyedStore(), reporter, block_ms=50)  # no verifier
+    assert reporter.sent == [] and await pending(redis) == 0
+
+
+async def test_a_failed_verification_is_retried_then_reported(redis, monkeypatch):
+    monkeypatch.setattr(settings, "ANALYSIS_MAX_ATTEMPTS", 2)
+    await publish(redis, kind="FixPhotoUploaded", before_key=None)
+    verifier, reporter = FakeVerifier(error=AnalysisError("model busy", retryable=True)), FakeReporter()
+    await worker.process_once(redis, None, KeyedStore(), reporter, block_ms=50, verifier=verifier)
+    assert reporter.sent == [] and await pending(redis) == 1
+    await worker.process_once(redis, None, KeyedStore(), reporter, block_ms=50, verifier=verifier)
+    (_, body), = reporter.sent
+    assert body["status"] == "failed" and await pending(redis) == 0

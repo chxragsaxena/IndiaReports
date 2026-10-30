@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import Button from "../UI/Button/Button";
 import { useToast } from "../UI/Toast/Toast";
 import { apiErrorMessage, supportReport } from "../../services/reportService";
-import { loadSession } from "../../services/session";
+import { isStaff, loadSession } from "../../services/session";
 import styles from "./MeToo.module.css";
 
 interface Props {
@@ -20,7 +20,9 @@ function MeToo({ reportId, count, open }: Props) {
     const [people, setPeople] = useState(count);
     const [busy, setBusy] = useState(false);
     const [said, setSaid] = useState(false);
-    const signedIn = loadSession() !== null;
+    const session = loadSession();
+    const signedIn = session !== null;
+    const staff = isStaff(session?.user.role); // staff work on reports; they are not affected residents
 
     async function meToo() {
         setBusy(true);
@@ -45,6 +47,7 @@ function MeToo({ reportId, count, open }: Props) {
                 {people} {people === 1 ? "person" : "people"} affected
             </span>
             {open &&
+                !staff &&
                 !said &&
                 (signedIn ? (
                     <Button variant="secondary" size="sm" loading={busy} onClick={meToo}>

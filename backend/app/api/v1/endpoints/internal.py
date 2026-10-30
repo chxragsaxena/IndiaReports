@@ -43,7 +43,7 @@ async def record_analysis(image_id: uuid.UUID, body: AnalysisResult, db: AsyncSe
     """The ai-service reports what it found in a photo (or that it gave up). Safe to repeat:
     a photo that already has findings is left alone, so a redelivered message alerts nobody twice."""
     image = await db.get(ReportImage, image_id)
-    if image is None:
+    if image is None or image.kind != "report":
         raise HTTPException(status_code=404, detail="Photo not found.")
     if image.status == "done":
         return {"ok": True, "ignored": True}
@@ -87,6 +87,67 @@ async def record_analysis(image_id: uuid.UUID, body: AnalysisResult, db: AsyncSe
                 "chat_id": admin.telegram_chat_id, "ack_token": None,
             }
         add_event(db, "ReportImageAnalyzed", payload)
+    await db.commit()
+    return {"ok": True}
+
+
+VERDICTS = ("fixed", "partly_fixed", "not_fixed", "cannot_tell")
+
+
+class VerificationResult(BaseModel):
+    status: Literal["done", "failed"]
+    verification: dict | None = None
+    provider: str | None = Field(default=None, max_length=20)
+    model: str | None = Field(default=None, max_length=80)
+    error: str | None = Field(default=None, max_length=500)
+    attempts: int = Field(default=0, ge=0, le=100)
+
+
+def _clean_verification(raw: dict) -> dict | None:
+    """Keep only the fields we know, bounded: this came from a model reading photos."""
+    if raw.get("verdict") not in VERDICTS:
+        return None
+    try:
+        confidence = min(1.0, max(0.0, float(raw.get("confidence", 0))))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    return {
+        "verdict": raw["verdict"],
+        "same_location": bool(raw.get("same_location", True)),
+        "compared_with_original": bool(raw.get("compared_with_original", True)),
+        "summary": _bounded(raw.get("summary", ""), 400),
+        "remaining_issues": [_bounded(x, 120) for x in (raw.get("remaining_issues") or [])[:5] if isinstance(x, str)],
+        "confidence": confidence,
+    }
+
+
+@router.post("/images/{image_id}/verification")
+async def record_verification(image_id: uuid.UUID, body: VerificationResult, db: AsyncSession = Depends(get_db)):
+    """The ai-service reports whether a repair photo looks like the original problem fixed.
+    Safe to repeat: a photo that already has a verdict keeps it."""
+    image = await db.get(ReportImage, image_id)
+    if image is None or image.kind != "fix":
+        raise HTTPException(status_code=404, detail="Repair photo not found.")
+    if image.status == "done":
+        return {"ok": True, "ignored": True}
+
+    if body.status == "failed":
+        image.status = "failed"
+        image.attempts = body.attempts
+        image.error = body.error or "Verification failed."
+        await db.commit()
+        return {"ok": True}
+
+    verification = _clean_verification(body.verification or {})
+    if verification is None:
+        raise HTTPException(status_code=422, detail="A finished verification needs a valid verdict.")
+    image.status = "done"
+    image.attempts = body.attempts
+    image.error = None
+    image.verification = verification
+    image.analysis_provider = body.provider
+    image.analysis_model = body.model
+    image.analyzed_at = datetime.now(timezone.utc)
     await db.commit()
     return {"ok": True}
 

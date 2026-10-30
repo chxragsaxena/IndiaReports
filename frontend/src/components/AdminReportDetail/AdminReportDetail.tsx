@@ -1,15 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StatusBadge, SeverityBadge, Tag } from "../UI/Badge/Badge";
+import Button from "../UI/Button/Button";
 import Skeleton from "../UI/Skeleton/Skeleton";
-import { getAdminReport } from "../../services/adminService";
-import type { AdminImage, AdminReportDetail as Detail, Triage } from "../../services/adminService";
+import { useToast } from "../UI/Toast/Toast";
+import { getAdminReport, uploadFixPhoto } from "../../services/adminService";
+import type { AdminImage, AdminReportDetail as Detail, Triage, Verification } from "../../services/adminService";
+import { apiErrorMessage } from "../../services/reportService";
+import { compressPhoto, photoProblem } from "../../utils/image";
 import { formatDateTime } from "../../utils/format";
 import styles from "./AdminReportDetail.module.css";
 
 interface Props {
     reportId: string;
     onClose: () => void;
+    /** Jump to this report on the queue map. */
+    onShowOnMap?: (reportId: string) => void;
 }
 
 const FLAG_LABEL: Record<string, string> = {
@@ -45,6 +51,42 @@ function TriagePanel({ triage }: { triage: Triage }) {
             ) : (
                 <p className={styles.demo}>Demo output: no text model is configured.</p>
             )}
+        </div>
+    );
+}
+
+const VERDICT_LABEL: Record<Verification["verdict"], string> = {
+    fixed: "Looks fixed",
+    partly_fixed: "Partly fixed",
+    not_fixed: "Not fixed",
+    cannot_tell: "Cannot tell",
+};
+
+function VerificationPanel({ image }: { image: AdminImage }) {
+    const v = image.verification;
+    if (image.status === "failed") return <p className={styles.problem}>Fix check failed: {image.error ?? "unknown error"}</p>;
+    if (!v) return <p className={styles.muted}>{image.status === "analyzing" ? "Comparing with the original photo..." : "Waiting for the fix check."}</p>;
+    return (
+        <div className={styles.finding}>
+            <div className={styles.findingHead}>
+                <strong className={v.verdict === "fixed" ? styles.good : v.verdict === "cannot_tell" ? styles.muted : styles.warn}>
+                    {VERDICT_LABEL[v.verdict]}
+                </strong>
+                <span className={styles.muted}>{Math.round(v.confidence * 100)}% confidence</span>
+            </div>
+            <p>{v.summary}</p>
+            {!v.same_location && <p className={styles.warn}>This may not be the same place as the original photo.</p>}
+            {!v.compared_with_original && (
+                <p className={styles.muted}>The reporter sent no photo, so this judges the repair photo on its own.</p>
+            )}
+            {v.remaining_issues.length > 0 && (
+                <ul>
+                    {v.remaining_issues.map((x) => (
+                        <li key={x}>{x}</li>
+                    ))}
+                </ul>
+            )}
+            {image.provider === "mock" && <p className={styles.demo}>Demo output: no vision model is configured.</p>}
         </div>
     );
 }
@@ -102,9 +144,13 @@ function Finding({ image }: { image: AdminImage }) {
 }
 
 /** A report with its photos and what the vision model found in each. */
-function AdminReportDetail({ reportId, onClose }: Props) {
+function AdminReportDetail({ reportId, onClose, onShowOnMap }: Props) {
     const [detail, setDetail] = useState<Detail | null>(null);
     const [failed, setFailed] = useState(false);
+    const [reload, setReload] = useState(0);
+    const [uploading, setUploading] = useState(false);
+    const fileInput = useRef<HTMLInputElement>(null);
+    const toast = useToast();
 
     // Load, and keep refreshing while any photo is still being analysed.
     useEffect(() => {
@@ -128,7 +174,27 @@ function AdminReportDetail({ reportId, onClose }: Props) {
             controller.abort();
             window.clearTimeout(timer);
         };
-    }, [reportId]);
+    }, [reportId, reload]);
+
+    async function attachRepairPhoto(file: File | undefined) {
+        if (!file) return;
+        const problem = photoProblem(file);
+        if (problem) {
+            toast.show(problem, "error");
+            return;
+        }
+        setUploading(true);
+        try {
+            await uploadFixPhoto(reportId, await compressPhoto(file));
+            toast.show("Repair photo added. It is being compared with the original.", "success");
+            setReload((n) => n + 1);
+        } catch (e) {
+            toast.show(apiErrorMessage(e), "error");
+        } finally {
+            setUploading(false);
+            if (fileInput.current) fileInput.current.value = "";
+        }
+    }
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -176,6 +242,13 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                     <p className={styles.muted}>
                         {[detail.address, detail.city, detail.district, detail.state, detail.pincode].filter(Boolean).join(", ")}
                     </p>
+                    {onShowOnMap && (
+                        <div>
+                            <Button variant="secondary" size="sm" onClick={() => onShowOnMap(detail.id)}>
+                                View on map
+                            </Button>
+                        </div>
+                    )}
 
                     <p className={styles.muted}>
                         {detail.assignee_name ? `Assigned to ${detail.assignee_name}` : "Not assigned"}
@@ -190,9 +263,11 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                     </p>
                     {detail.resolution_note && <p className={styles.description}>&ldquo;{detail.resolution_note}&rdquo;</p>}
 
-                    <h3>Photos ({detail.images.length})</h3>
+                    <h3>Photos ({detail.images.filter((i) => i.kind === "report").length})</h3>
 
-                    {detail.images.length === 0 && <p className={styles.muted}>The reporter did not attach any photos.</p>}
+                    {detail.images.every((i) => i.kind !== "report") && (
+                        <p className={styles.muted}>The reporter did not attach any photos.</p>
+                    )}
                     {demo && (
                         <p className={styles.demo}>
                             Demo output: no vision model is configured, so these findings are samples and the photos were not examined.
@@ -202,7 +277,9 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                         <p className={styles.muted}>AI analysis is not set up, so photos are shown without findings.</p>
                     )}
 
-                    {detail.images.map((image) => (
+                    {detail.images
+                        .filter((i) => i.kind === "report")
+                        .map((image) => (
                         <figure key={image.id} className={styles.photo}>
                             <a href={image.url} target="_blank" rel="noopener noreferrer">
                                 <img src={image.url} alt={`Photo for ${detail.title}`} loading="lazy" />
@@ -217,6 +294,41 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                             </figcaption>
                         </figure>
                     ))}
+
+                    <h3>Repair photos ({detail.images.filter((i) => i.kind === "fix").length})</h3>
+                    <p className={styles.muted}>
+                        Add a photo of the finished repair. The vision model compares it with the original photo and says whether the
+                        problem looks fixed.
+                    </p>
+                    {detail.images
+                        .filter((i) => i.kind === "fix")
+                        .map((image) => (
+                            <figure key={image.id} className={styles.photo}>
+                                <a href={image.url} target="_blank" rel="noopener noreferrer">
+                                    <img src={image.url} alt={`Repair photo for ${detail.title}`} loading="lazy" />
+                                </a>
+                                <figcaption>
+                                    <VerificationPanel image={image} />
+                                    {image.model && image.provider !== "mock" && (
+                                        <p className={styles.fine}>Compared by {image.model}. An assistive check, so verify before closing.</p>
+                                    )}
+                                </figcaption>
+                            </figure>
+                        ))}
+                    {detail.images.filter((i) => i.kind === "fix").length < 2 && (
+                        <div>
+                            <input
+                                ref={fileInput}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                hidden
+                                onChange={(e) => void attachRepairPhoto(e.target.files?.[0])}
+                            />
+                            <Button variant="secondary" size="sm" loading={uploading} onClick={() => fileInput.current?.click()}>
+                                Add repair photo
+                            </Button>
+                        </div>
+                    )}
                 </div>
             )}
         </aside>

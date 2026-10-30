@@ -35,6 +35,9 @@ class ReportServiceClient:
     async def send_triage(self, report_id: str, body: dict) -> None:
         await self._post(f"/api/v1/internal/reports/{report_id}/triage", body)
 
+    async def send_verification(self, image_id: str, body: dict) -> None:
+        await self._post(f"/api/v1/internal/images/{image_id}/verification", body)
+
     async def _post(self, path: str, body: dict) -> None:
         try:
             response = await self._client.post(path, json=body)

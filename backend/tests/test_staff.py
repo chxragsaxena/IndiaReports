@@ -242,8 +242,11 @@ async def test_resolved_reports_stay_on_the_map_during_the_window_then_leave(cli
     await rollup_once()
 
     from app.core.cache import clear_local_cache
+    from app.core.redis import get_redis
 
     clear_local_cache()
+    if get_redis() is not None:
+        await get_redis().flushdb()  # the shared cache would otherwise keep serving the pins from before (throwaway test Redis only)
     assert await pins(client) == []
     listed = (await client.get("/api/v1/reports/", params={"min_lat": 18, "max_lat": 20, "min_lng": 72, "max_lng": 74})).json()
     assert listed == []
@@ -470,3 +473,56 @@ async def test_delete_user_removes_the_account_but_keeps_the_reports(client):
     assert await remove("asha@city.example") is True
     officers = (await client.get("/api/v1/admin/officers", headers=ADMIN)).json()
     assert [o["name"] for o in officers] == ["Asha"] and officers[0]["email"] is None
+
+
+# ---- the queue on a map --------------------------------------------------------------
+
+
+async def test_an_officers_map_shows_their_own_area_and_queue_only(client):
+    asha, ravi = await two_cities(client)
+    citizen = (await register(client))["access_token"]
+    mine = await citizen_report(client, citizen)
+    await citizen_report(client, citizen, latitude=28.6, longitude=77.2, city="Delhi")
+
+    body = (await client.get("/api/v1/admin/queue-map", headers=bearer(asha))).json()
+    assert [a["name"] for a in body["areas"]] == ["Andheri ward"]
+    assert body["areas"][0]["geometry"]["type"] == "MultiPolygon"
+    assert [r["id"] for r in body["reports"]] == [mine["id"]]
+    assert body["reports"][0]["latitude"] == pytest.approx(19.076) and body["truncated"] is False
+
+    delhi = (await client.get("/api/v1/admin/queue-map", headers=bearer(ravi))).json()
+    assert [a["name"] for a in delhi["areas"]] == ["Delhi ward"] and len(delhi["reports"]) == 1
+
+
+async def test_the_main_admins_map_shows_every_area_and_report(client):
+    await two_cities(client)
+    citizen = (await register(client))["access_token"]
+    await citizen_report(client, citizen)
+    await citizen_report(client, citizen, latitude=28.6, longitude=77.2, city="Delhi")
+    main = (await client.post("/api/v1/auth/login", json={"email": "main@city.example", "password": PASSWORD})).json()["access_token"]
+
+    body = (await client.get("/api/v1/admin/queue-map", headers=bearer(main))).json()
+    assert sorted(a["name"] for a in body["areas"]) == ["Andheri ward", "Delhi ward"] and len(body["reports"]) == 2
+
+
+async def test_the_queue_map_is_for_staff_only_and_hides_archived_reports(client):
+    asha, _ = await two_cities(client)
+    citizen = (await register(client))["access_token"]
+    assert (await client.get("/api/v1/admin/queue-map")).status_code == 401
+    assert (await client.get("/api/v1/admin/queue-map", headers=bearer(citizen))).status_code == 403
+
+    report = await citizen_report(client, citizen)
+    await client.patch(f"/api/v1/reports/{report['id']}/status", json={"status": "RESOLVED"}, headers=bearer(asha))
+    assert len((await client.get("/api/v1/admin/queue-map", headers=bearer(asha))).json()["reports"]) == 1  # still on the map
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE reports SET archived_at = now()"))
+    assert (await client.get("/api/v1/admin/queue-map", headers=bearer(asha))).json()["reports"] == []
+
+
+async def test_staff_cannot_say_me_too(client):
+    asha, _ = await two_cities(client)
+    citizen = (await register(client))["access_token"]
+    report = await citizen_report(client, citizen)
+    r = await client.post(f"/api/v1/reports/{report['id']}/support", headers=bearer(asha))
+    assert r.status_code == 403
+    assert (await client.get(f"/api/v1/reports/{report['id']}")).json()["affected_count"] == 1

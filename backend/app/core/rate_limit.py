@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, Request
 
 from app.core.auth import require_user
 from app.core.config import settings
+from app.core.security import Staff, require_staff
 from app.models.user import User
 from app.core.redis import get_redis
 
@@ -57,10 +58,18 @@ async def rate_limit_auth(request: Request) -> None:
 
 async def rate_limit_uploads(user: User = Depends(require_user)) -> None:
     """Per-person cap on photo uploads (each one costs storage and a model run)."""
+    await _count_upload(f"ratelimit:upload:{user.id}")
+
+
+async def rate_limit_staff_uploads(staff: Staff = Depends(require_staff)) -> None:
+    """The same cap for staff, who may act through the service API key instead of an account."""
+    await _count_upload(f"ratelimit:upload:{staff.user.id if staff.user else 'service-key'}")
+
+
+async def _count_upload(key: str) -> None:
     client = get_redis()
     if client is None:
         return
-    key = f"ratelimit:upload:{user.id}"
     try:
         count = await client.incr(key)
         if count == 1:

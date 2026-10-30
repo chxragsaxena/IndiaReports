@@ -93,8 +93,13 @@ a suggested action). Serious findings (high or critical severity, or inappropria
 |---|---|---|
 | Photo analysis | `qwen/qwen3.8-27b` (vision) | `ANALYSIS_MODEL` |
 | Report text: language, English translation, urgency, spam | `openai/gpt-oss-20b` (small, fast) | `TRIAGE_MODEL` |
+| Before/after fix check: is the repair photo the same place with the problem gone? | the vision model (own prompt) | `VERIFY_MODEL` (empty uses `ANALYSIS_MODEL`) |
 
 A staff member sees the translation, urgency and a possible-spam flag next to each report. The model is told to treat report text as untrusted data, and its output is bounded before it is stored.
+
+**Checking a fix.** On a report's detail panel, staff can add up to 2 *repair photos*. The vision model compares each with the reporter's original photo and says
+*looks fixed*, *partly fixed*, *not fixed* or *cannot tell*, with what is still wrong and whether it looks like the same place. It is an assistive hint for the
+supervisor, shown to staff only; it never changes a report's status by itself. If the reporter sent no photo, the repair photo is judged on its own.
 
 This runs in its own service, **ai-service** (`services/ai`), which reads upload events from the Redis stream and posts findings back to the report-service
 (set the same `INTERNAL_API_KEY` on both). If it is down, uploads still work and photos wait for findings.

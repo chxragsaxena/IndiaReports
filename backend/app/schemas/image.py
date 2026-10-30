@@ -18,6 +18,8 @@ class AdminImage(BaseModel):
     status: str  # pending | analyzing | done | failed
     severity: str | None = None
     findings: dict | None = None
+    kind: str = "report"  # report = photo of the problem, fix = photo of the repair
+    verification: dict | None = None  # for a repair photo: the before/after verdict
     provider: str | None = None
     model: str | None = None
     error: str | None = None

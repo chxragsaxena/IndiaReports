@@ -27,6 +27,9 @@ from app.schemas.admin import (
     OfficerAccount,
     OfficerCreate,
     OfficerResponse,
+    QueueMap,
+    QueueMapArea,
+    QueueMapReport,
     StaffProfile,
 )
 
@@ -245,7 +248,7 @@ async def list_reports_for_admin(
         for report_id, severity, status_ in (
             await db.execute(
                 select(ReportImage.report_id, ReportImage.severity, ReportImage.status).where(
-                    ReportImage.report_id.in_([r.id for r, _, _ in page])
+                    ReportImage.report_id.in_([r.id for r, _, _ in page]), ReportImage.kind == "report"
                 )
             )
         ).all():
@@ -329,8 +332,45 @@ async def report_detail(
                 id=i.id,
                 url=await store.presign_get(i.storage_key, settings.IMAGE_URL_TTL_SECONDS) if store else "",
                 width=i.width, height=i.height, status=i.status, severity=i.severity, findings=i.analysis,
+                kind=i.kind, verification=i.verification,
                 provider=i.analysis_provider, model=i.analysis_model, error=i.error, analyzed_at=i.analyzed_at,
             )
             for i in images
         ],
     )
+
+
+QUEUE_MAP_LIMIT = 1000
+
+
+@router.get("/queue-map", response_model=QueueMap)
+async def queue_map(staff: Staff = Depends(require_staff), db: AsyncSession = Depends(get_db)):
+    """The staff member's queue on a map. An area officer gets their own area's boundary and the
+    reports assigned to them; the main administrator gets every area and the newest reports.
+    Archived reports (already off the public map) are left out."""
+    area_query = select(Area.name, func.ST_AsGeoJSON(Area.geom)).order_by(Area.name).limit(1000)
+    if not staff.is_main:
+        area_query = area_query.where(Area.id == staff.officer.area_id)
+    areas = [QueueMapArea(name=name, geometry=json.loads(geojson)) for name, geojson in (await db.execute(area_query)).all()]
+
+    query = (
+        select(Report)
+        .where(Report.archived_at.is_(None))
+        .order_by(Report.created_at.desc())
+        .limit(QUEUE_MAP_LIMIT + 1)
+    )
+    if not staff.is_main:
+        query = query.where(Report.assigned_officer_id == staff.officer.id)
+    reports = (await db.execute(query)).scalars().all()
+
+    now = datetime.now(timezone.utc)
+    pins = []
+    for r in reports[:QUEUE_MAP_LIMIT]:
+        due = _due_at(r)
+        pins.append(
+            QueueMapReport(
+                id=r.id, title=r.title, category=r.category, status=r.status, latitude=r.latitude,
+                longitude=r.longitude, overdue=bool(due and due <= now), escalated=r.escalated_at is not None,
+            )
+        )
+    return QueueMap(areas=areas, reports=pins, truncated=len(reports) > QUEUE_MAP_LIMIT)

@@ -102,6 +102,10 @@
     font-size: 0.88rem;
 }
 
+.good {
+    color: var(--success, #166534);
+}
+
 .demo {
     background: var(--brand-soft);
     color: var(--brand);

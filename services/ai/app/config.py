@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # The model for reading report text (language, translation, urgency, spam). Empty picks a small
     # fast open-weight text model: gpt-oss-20b on Groq, qwen3:4b on Ollama.
     TRIAGE_MODEL: str = ""
+    # The model that compares a before and an after photo. Empty uses ANALYSIS_MODEL.
+    VERIFY_MODEL: str = ""
+    VERIFY_MAX_PER_DAY: int = 1000
     ANALYSIS_TIMEOUT_SECONDS: float = 240.0
     ANALYSIS_CONCURRENCY: int = 1
     ANALYSIS_MAX_PER_DAY: int = 2000

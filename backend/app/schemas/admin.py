@@ -109,3 +109,27 @@ class AdminReportPage(BaseModel):
     items: list[AdminReportRow]
     # Pass as `before` to get the next (older) page; null when there is no more.
     next_before: datetime | None = None
+
+
+class QueueMapReport(BaseModel):
+    id: UUID
+    title: str
+    category: str
+    status: str
+    latitude: float
+    longitude: float
+    overdue: bool = False
+    escalated: bool = False
+
+
+class QueueMapArea(BaseModel):
+    name: str
+    geometry: dict  # GeoJSON MultiPolygon, WGS84 [lng, lat]
+
+
+class QueueMap(BaseModel):
+    """Everything the staff map needs: the boundary of the area they answer for, and the pins of their queue."""
+
+    areas: list[QueueMapArea]
+    reports: list[QueueMapReport]
+    truncated: bool = False

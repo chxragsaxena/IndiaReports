@@ -138,12 +138,12 @@ async def test_relay_publishes_each_event_once(client):
         f"/api/v1/reports/{created['id']}/status", json={"status": "RESOLVED"}, headers=ADMIN
     )
 
-    assert await relay_once() == 2
+    assert await relay_once() == 3  # created, text triage requested, status changed
     assert await relay_once() == 0  # nothing is published twice
 
     entries = await redis.xrange(settings.EVENT_STREAM)
-    assert [e[1]["type"] for e in entries] == ["ReportCreated", "ReportStatusChanged"]
-    payload = json.loads(entries[1][1]["data"])
+    assert [e[1]["type"] for e in entries] == ["ReportCreated", "ReportTriageRequested", "ReportStatusChanged"]
+    payload = json.loads(entries[2][1]["data"])
     assert payload["old_status"] == "OPEN" and payload["new_status"] == "RESOLVED"
 
 

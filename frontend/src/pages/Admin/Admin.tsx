@@ -4,11 +4,12 @@ import { Link } from "react-router-dom";
 import Button from "../../components/UI/Button/Button";
 import Skeleton from "../../components/UI/Skeleton/Skeleton";
 import AdminReportDetail from "../../components/AdminReportDetail/AdminReportDetail";
+import QueueMap from "../../components/QueueMap/QueueMap";
 import { StatusBadge, SeverityBadge, Tag } from "../../components/UI/Badge/Badge";
 import { useToast } from "../../components/UI/Toast/Toast";
 import { useLiveSocket } from "../../hooks/useLiveSocket";
-import { getStaffProfile, listAdminReports, updateStatus } from "../../services/adminService";
-import type { AdminFilter, AdminReport, StaffProfile } from "../../services/adminService";
+import { getQueueMap, getStaffProfile, listAdminReports, updateStatus } from "../../services/adminService";
+import type { AdminFilter, AdminReport, QueueMapData, StaffProfile } from "../../services/adminService";
 import { apiErrorMessage } from "../../services/reportService";
 import type { ReportStatus } from "../../types/report";
 import { formatDateTime, timeAgo } from "../../utils/format";
@@ -59,6 +60,9 @@ function Admin() {
     const [openId, setOpenId] = useState<string | null>(null);
     const [resolving, setResolving] = useState<AdminReport | null>(null);
     const firstLoad = useRef(true);
+    const [view, setView] = useState<"list" | "map">("list");
+    const [mapData, setMapData] = useState<QueueMapData | null>(null);
+    const [focusId, setFocusId] = useState<string | null>(null);
 
     // Live updates: any new report or change reloads the list (the server throttles hints).
     const { status: liveStatus, setViewport } = useLiveSocket({
@@ -92,6 +96,25 @@ function Admin() {
             cancelled = true;
         };
     }, [filter, reload, fail]);
+
+    // The map shows the whole queue, not the list's filter; it refreshes with the same live hints.
+    useEffect(() => {
+        if (view !== "map") return;
+        const controller = new AbortController();
+        getQueueMap(controller.signal)
+            .then(setMapData)
+            .catch((err) => {
+                if ((err as { code?: string }).code !== "ERR_CANCELED") fail(err);
+            });
+        return () => controller.abort();
+    }, [view, reload, fail]);
+
+    function showOnMap(id: string) {
+        setOpenId(null);
+        setFocusId(id);
+        setView("map");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
 
     async function loadMore() {
         if (!next) return;
@@ -157,6 +180,25 @@ function Admin() {
                     </p>
                 </div>
                 <div className={styles.headerSide}>
+                    <div className={styles.viewSwitch} role="group" aria-label="Queue view">
+                        <button
+                            className={view === "list" ? styles.filterActive : styles.filter}
+                            aria-pressed={view === "list"}
+                            onClick={() => setView("list")}
+                        >
+                            List
+                        </button>
+                        <button
+                            className={view === "map" ? styles.filterActive : styles.filter}
+                            aria-pressed={view === "map"}
+                            onClick={() => {
+                                setFocusId(null);
+                                setView("map");
+                            }}
+                        >
+                            Map
+                        </button>
+                    </div>
                     <span className={styles.live} role="status">
                         <span className={`${styles.liveDot} ${styles[liveStatus]}`} aria-hidden="true" />
                         {liveStatus === "live" ? "Live" : liveStatus === "off" ? "Live updates off" : "Connecting"}
@@ -166,7 +208,20 @@ function Admin() {
                 </div>
             </header>
 
-            <div className={styles.filters} role="group" aria-label="Filter reports">
+            {view === "map" && (
+                <>
+                    {mapData ? (
+                        <QueueMap data={mapData} focusId={focusId} onOpen={setOpenId} />
+                    ) : (
+                        <Skeleton height={420} />
+                    )}
+                    <p className={styles.sub}>
+                        {isMain ? "Every area and report." : "Your area and the reports assigned to you."} Click a pin to open the report.
+                    </p>
+                </>
+            )}
+
+            <div className={styles.filters} role="group" aria-label="Filter reports" style={view === "map" ? { display: "none" } : undefined}>
                 {filters.map((f) => (
                     <button
                         key={f.value}
@@ -179,7 +234,7 @@ function Admin() {
                 ))}
             </div>
 
-            <div className={styles.tableWrap}>
+            <div className={styles.tableWrap} hidden={view === "map"}>
                 <table className={styles.table}>
                     <thead>
                         <tr>
@@ -257,6 +312,9 @@ function Admin() {
                                             <div className={styles.statusCell}>
                                                 <StatusBadge status={r.status} />
                                                 <div className={styles.actions}>
+                                                    <Button size="sm" variant="secondary" onClick={() => showOnMap(r.id)}>
+                                                        View on map
+                                                    </Button>
                                                     {r.status === "OPEN" && (
                                                         <Button size="sm" variant="secondary" onClick={() => move(r, "IN_PROGRESS")}>
                                                             Start work
@@ -282,7 +340,7 @@ function Admin() {
                 </table>
             </div>
 
-            {openId && <AdminReportDetail key={openId} reportId={openId} onClose={() => setOpenId(null)} />}
+            {openId && <AdminReportDetail key={openId} reportId={openId} onClose={() => setOpenId(null)} onShowOnMap={showOnMap} />}
 
             {resolving && (
                 <ResolveDialog
@@ -295,7 +353,7 @@ function Admin() {
                 />
             )}
 
-            {next && (
+            {next && view === "list" && (
                 <div className={styles.more}>
                     <Button variant="secondary" onClick={loadMore} loading={loadingMore}>
                         Load older reports

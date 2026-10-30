@@ -246,3 +246,8 @@
     justify-content: flex-end;
     gap: 8px;
 }
+
+.viewSwitch {
+    display: inline-flex;
+    gap: 6px;
+}

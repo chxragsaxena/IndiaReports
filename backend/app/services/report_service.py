@@ -182,6 +182,8 @@ class ReportService:
     async def support(db: AsyncSession, report_id: uuid.UUID, user: User) -> tuple[Report, bool]:
         """"Me too": add this person to the people affected. Counted once per person, and the
         reporter is already counted. Returns the report and whether this call added someone."""
+        if user.role in ("admin", "officer"):
+            raise HTTPException(status_code=403, detail="Staff cannot add themselves as affected residents.")
         report = (await db.execute(select(Report).where(Report.id == report_id).with_for_update())).scalar_one_or_none()
         if report is None:
             raise HTTPException(status_code=404, detail="Report not found.")

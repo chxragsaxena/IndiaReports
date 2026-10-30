@@ -15,7 +15,7 @@ from app.models.image import ReportImage
 from app.models.report import Report
 from app.schemas.image import ImageUploadResponse
 from app.core.config import settings
-from app.core.rate_limit import rate_limit_uploads, rate_limit_writes
+from app.core.rate_limit import rate_limit_staff_uploads, rate_limit_uploads, rate_limit_writes
 from app.models.user import User
 from app.core.security import Staff, require_staff
 from app.db.session import get_db
@@ -287,7 +287,9 @@ async def upload_report_image(
     # Serialise uploads for this report so the per-report limit cannot be raced past.
     await db.execute(select(Report.id).where(Report.id == report_id).with_for_update())
     existing = (
-        await db.execute(select(func.count()).select_from(ReportImage).where(ReportImage.report_id == report_id))
+        await db.execute(
+            select(func.count()).select_from(ReportImage).where(ReportImage.report_id == report_id, ReportImage.kind == "report")
+        )
     ).scalar_one()
     if existing >= settings.MAX_IMAGES_PER_REPORT:
         raise HTTPException(status_code=409, detail=f"A report can have at most {settings.MAX_IMAGES_PER_REPORT} photos.")
@@ -313,6 +315,70 @@ async def upload_report_image(
         "image_id": str(image_id), "report_id": str(report_id), "storage_key": key,
         "content_type": processed.content_type, "title": report.title,
         "description": report.description, "category": report.category,
+    })
+    await db.commit()
+    return ImageUploadResponse(id=image_id, width=processed.width, height=processed.height)
+
+
+MAX_FIX_PHOTOS = 2
+
+
+@router.post(
+    "/{report_id}/fix-photo",
+    response_model=ImageUploadResponse,
+    status_code=201,
+    dependencies=[Depends(rate_limit_staff_uploads)],
+)
+async def upload_fix_photo(
+    report_id: UUID,
+    file: UploadFile = File(...),
+    staff: Staff = Depends(require_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Staff attach a photo of the finished repair. The ai-service compares it with the
+    original photo and tells staff whether the problem looks fixed (an assistive check only).
+    An area officer can only do this for reports in their own queue."""
+    store = get_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="Photo uploads are not available right now.")
+
+    report = await db.get(Report, report_id)
+    if report is None or not staff.can_see(report):
+        raise HTTPException(status_code=404, detail="Report not found.")
+    if report.archived_at is not None:
+        raise HTTPException(status_code=409, detail="This report has been closed and archived.")
+
+    try:
+        raw = await read_limited(file, settings.MAX_UPLOAD_BYTES)
+        processed = await process_image(raw)
+    except TooLarge as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except ImageRejected as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    await db.execute(select(Report.id).where(Report.id == report_id).with_for_update())
+    photos = (
+        await db.execute(select(ReportImage).where(ReportImage.report_id == report_id).order_by(ReportImage.created_at))
+    ).scalars().all()
+    if sum(1 for p in photos if p.kind == "fix") >= MAX_FIX_PHOTOS:
+        raise HTTPException(status_code=409, detail=f"A report can have at most {MAX_FIX_PHOTOS} repair photos.")
+    before = next((p for p in photos if p.kind == "report"), None)  # the oldest photo of the problem
+
+    image_id = uuid_module.uuid4()
+    key = f"reports/{report_id}/fix-{image_id}.jpg"
+    await store.put(key, processed.data, processed.content_type)
+    db.add(
+        ReportImage(
+            id=image_id, report_id=report_id, uploader_id=staff.user.id if staff.user else None, kind="fix",
+            storage_key=key, content_type=processed.content_type, size_bytes=len(processed.data),
+            width=processed.width, height=processed.height,
+        )
+    )
+    add_event(db, "FixPhotoUploaded", {
+        "image_id": str(image_id), "report_id": str(report_id), "storage_key": key,
+        "content_type": processed.content_type, "before_key": before.storage_key if before else None,
+        "before_content_type": before.content_type if before else None,
+        "title": report.title, "description": report.description, "category": report.category,
     })
     await db.commit()
     return ImageUploadResponse(id=image_id, width=processed.width, height=processed.height)

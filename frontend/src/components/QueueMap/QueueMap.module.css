@@ -1,0 +1,68 @@
+.wrapper {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--surface-2);
+}
+
+.map {
+    width: 100%;
+    height: min(68vh, 640px);
+    min-height: 380px;
+}
+
+.legend {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.12));
+    font-size: 0.8rem;
+    color: var(--text-2);
+}
+
+.legend span {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.legend i {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1.5px solid #fff;
+    box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.legend .ring {
+    background: transparent;
+    border: 2px solid #111827;
+    box-shadow: none;
+}
+
+.dash {
+    color: var(--text-3);
+    font-size: 0.76rem;
+}
+
+.note {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    margin: 0;
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    color: var(--text-2);
+}

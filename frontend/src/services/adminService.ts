@@ -76,6 +76,26 @@ export async function getStaffProfile(): Promise<StaffProfile> {
     return (await client.get<StaffProfile>("/admin/me")).data;
 }
 
+export interface QueueMapData {
+    areas: { name: string; geometry: { type: string; coordinates: unknown } }[];
+    reports: {
+        id: string;
+        title: string;
+        category: string;
+        status: ReportStatus;
+        latitude: number;
+        longitude: number;
+        overdue: boolean;
+        escalated: boolean;
+    }[];
+    truncated: boolean;
+}
+
+/** The staff member's area boundary and the pins of their queue. */
+export async function getQueueMap(signal?: AbortSignal): Promise<QueueMapData> {
+    return (await client.get<QueueMapData>("/admin/queue-map", { signal })).data;
+}
+
 export async function listOfficers(): Promise<Officer[]> {
     return (await client.get<Officer[]>("/admin/officers")).data;
 }
@@ -143,8 +163,20 @@ export interface Findings {
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
+/** Does a repair photo look like the original problem is fixed? Assistive, for staff only. */
+export interface Verification {
+    verdict: "fixed" | "partly_fixed" | "not_fixed" | "cannot_tell";
+    same_location: boolean;
+    compared_with_original: boolean;
+    summary: string;
+    remaining_issues: string[];
+    confidence: number;
+}
+
 export interface AdminImage {
     id: string;
+    kind: "report" | "fix";
+    verification: Verification | null;
     url: string;
     width: number;
     height: number;
@@ -199,6 +231,13 @@ export interface Triage {
     confidence: number;
     provider: string;
     model: string;
+}
+
+/** Attach a photo of the finished repair; the vision model compares it with the original photo. */
+export async function uploadFixPhoto(reportId: string, photo: Blob): Promise<void> {
+    const form = new FormData();
+    form.append("file", photo, "repair.jpg");
+    await client.post(`/reports/${encodeURIComponent(reportId)}/fix-photo`, form, { timeout: 60000 });
 }
 
 export async function getAdminReport(id: string, signal?: AbortSignal): Promise<AdminReportDetail> {

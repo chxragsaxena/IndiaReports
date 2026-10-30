@@ -312,3 +312,141 @@ async def test_bad_results_are_refused(client, photo_store):
     unknown = "00000000-0000-0000-0000-000000000000"
     assert (await send(client, unknown, result())).status_code == 404
     assert (await image_row())["status"] == "pending"
+
+
+# ---- before/after fix verification ------------------------------------------------------
+
+
+VERDICT = {"verdict": "fixed", "same_location": True, "summary": "Filled with asphalt.",
+           "remaining_issues": [], "confidence": 0.9}
+
+
+async def fix_photo(client, report_id, headers=API_KEY, data=None):
+    return await client.post(
+        f"/api/v1/reports/{report_id}/fix-photo",
+        files={"file": ("fix.jpg", data if data is not None else jpeg(color=(10, 200, 10)), "image/jpeg")},
+        headers=headers,
+    )
+
+
+async def fix_row():
+    async with engine.connect() as conn:
+        return (await conn.execute(text("SELECT * FROM report_images WHERE kind = 'fix'"))).mappings().one()
+
+
+async def verdict(client, image_id, body=None, headers=INTERNAL):
+    body = {"status": "done", "verification": VERDICT, "provider": "fake", "model": "fake-vision", "attempts": 1} if body is None else body
+    return await client.post(f"/api/v1/internal/images/{image_id}/verification", json=body, headers=headers)
+
+
+async def test_staff_can_attach_a_repair_photo_and_the_original_travels_with_it(client, photo_store):
+    _, report_id = await uploaded_report(client)
+    original = (await image_row())["storage_key"]
+    assert (await fix_photo(client, report_id)).status_code == 201
+
+    (sent,) = await events("FixPhotoUploaded")
+    row = await fix_row()
+    assert sent["image_id"] == str(row["id"]) and sent["before_key"] == original
+    assert sent["storage_key"] == row["storage_key"] != original
+    assert row["kind"] == "fix" and row["status"] == "pending"
+    assert len(await events("ReportImageUploaded")) == 1  # a repair photo is not analysed as a new problem
+
+
+async def test_a_repair_photo_works_even_when_the_reporter_sent_no_photo(client, photo_store):
+    token = await citizen(client)
+    report_id = await report_by(client, token)
+    assert (await fix_photo(client, report_id)).status_code == 201
+    (sent,) = await events("FixPhotoUploaded")
+    assert sent["before_key"] is None
+
+
+async def test_only_staff_can_attach_repair_photos(client, photo_store):
+    token, report_id = await uploaded_report(client)
+    assert (await fix_photo(client, report_id, headers=bearer(token))).status_code == 403  # the reporter is a citizen
+    assert (await fix_photo(client, report_id, headers={})).status_code == 401
+    assert (await fix_photo(client, "00000000-0000-0000-0000-000000000000")).status_code == 404
+    assert await events("FixPhotoUploaded") == []
+
+
+async def test_repair_photos_are_limited_and_do_not_use_up_the_reporters_photo_allowance(client, photo_store, monkeypatch):
+    monkeypatch.setattr(settings, "MAX_IMAGES_PER_REPORT", 1)
+    token, report_id = await uploaded_report(client)  # the reporter's one allowed photo
+    assert (await fix_photo(client, report_id)).status_code == 201
+    assert (await fix_photo(client, report_id)).status_code == 201
+    third = await fix_photo(client, report_id)
+    assert third.status_code == 409 and "at most 2" in third.json()["detail"]
+    assert (await upload(client, report_id, token)).status_code == 409  # the reporter's own limit is unchanged
+
+
+async def test_repair_photos_are_off_when_storage_is_not_configured(client, monkeypatch):
+    token = await citizen(client)
+    report_id = await report_by(client, token)
+    use_store(None)
+    monkeypatch.setattr(settings, "S3_ENDPOINT_URL", None)
+    assert (await fix_photo(client, report_id)).status_code == 503
+
+
+async def test_the_verdict_is_stored_and_staff_see_it(client, photo_store):
+    _, report_id = await uploaded_report(client)
+    await fix_photo(client, report_id)
+    image_id = (await fix_row())["id"]
+
+    assert (await verdict(client, image_id)).status_code == 200
+    row = await fix_row()
+    assert row["status"] == "done" and row["verification"]["verdict"] == "fixed" and row["analysis_model"] == "fake-vision"
+
+    detail = (await client.get(f"/api/v1/admin/reports/{report_id}", headers=API_KEY)).json()
+    kinds = {i["kind"]: i for i in detail["images"]}
+    assert set(kinds) == {"report", "fix"} and kinds["fix"]["verification"]["verdict"] == "fixed"
+    assert kinds["report"]["verification"] is None
+
+
+async def test_a_redelivered_verdict_changes_nothing(client, photo_store):
+    _, report_id = await uploaded_report(client)
+    await fix_photo(client, report_id)
+    image_id = (await fix_row())["id"]
+    await verdict(client, image_id)
+    again = await verdict(client, image_id, {"status": "done", "verification": VERDICT | {"verdict": "not_fixed"}, "attempts": 2})
+    assert again.json()["ignored"] is True
+    assert (await fix_row())["verification"]["verdict"] == "fixed"
+
+
+async def test_bad_verdicts_are_refused_and_failures_recorded(client, photo_store):
+    _, report_id = await uploaded_report(client)
+    await fix_photo(client, report_id)
+    image_id = (await fix_row())["id"]
+
+    for bad in ({"status": "done", "verification": VERDICT | {"verdict": "great"}}, {"status": "done"}):
+        assert (await verdict(client, image_id, bad)).status_code == 422
+    assert (await verdict(client, image_id, headers={})).status_code == 401
+    assert (await fix_row())["status"] == "pending"
+
+    failed = await verdict(client, image_id, {"status": "failed", "error": "model busy", "attempts": 3})
+    assert failed.status_code == 200
+    row = await fix_row()
+    assert row["status"] == "failed" and row["error"] == "model busy" and row["verification"] is None
+
+
+async def test_the_verdict_endpoints_only_accept_the_right_kind_of_photo(client, photo_store):
+    _, report_id = await uploaded_report(client)
+    original_id = (await image_row())["id"]
+    assert (await verdict(client, original_id)).status_code == 404  # not a repair photo
+    await fix_photo(client, report_id)
+    fix_id = (await fix_row())["id"]
+    assert (await send(client, fix_id, result())).status_code == 404  # not a photo of a problem
+
+
+async def test_verdicts_never_reach_citizens_or_the_public(client, photo_store):
+    token, report_id = await uploaded_report(client)
+    await fix_photo(client, report_id)
+    await verdict(client, (await fix_row())["id"])
+    mine = (await client.get("/api/v1/me/reports", headers=bearer(token))).json()
+    assert "verification" not in json.dumps(mine) and "Filled with asphalt" not in json.dumps(mine)
+    assert "Filled with asphalt" not in (await client.get(f"/api/v1/reports/{report_id}")).text
+
+
+async def test_repair_photos_do_not_count_as_problem_photos_in_the_admin_list(client, photo_store):
+    _, report_id = await uploaded_report(client)
+    await fix_photo(client, report_id)
+    items = (await client.get("/api/v1/admin/reports", headers=API_KEY)).json()["items"]
+    assert [r["image_count"] for r in items if r["id"] == report_id] == [1]

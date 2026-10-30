@@ -2,6 +2,7 @@
 
   ReportImageUploaded   -> the vision model looks at the photo      -> /internal/images/{id}/analysis
   ReportTriageRequested -> a small text model reads the report text -> /internal/reports/{id}/triage
+  FixPhotoUploaded      -> the vision model compares before and after -> /internal/images/{id}/verification
 
 The work queue is the Redis stream itself (a consumer group), so this service needs no database:
 a message stays "pending" until it is acknowledged, a crashed worker's messages are picked up
@@ -17,6 +18,7 @@ from datetime import datetime, timezone
 
 from app.analysis.analyzer import Analyzer, AnalysisError, ReportContext
 from app.analysis.triage import TextContext
+from app.analysis.verifier import FixContext
 from app.config import settings
 from app.reporting import Rejected, ReportServiceClient, Unavailable
 from app.store import PhotoStore
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 IMAGE_EVENT = "ReportImageUploaded"
 EVENT_TYPE = IMAGE_EVENT  # kept for older imports
 TRIAGE_EVENT = "ReportTriageRequested"
+FIX_EVENT = "FixPhotoUploaded"
 RETRY_BACKOFF = (60, 300, 1800)  # seconds to wait before attempt 2, 3, ...
 CONSUMER = f"{socket.gethostname()}-{os.getpid()}"
 
@@ -49,15 +52,15 @@ async def _within_daily_cap(redis, name: str, cap: int) -> bool:
 
 async def handle(
     fields: dict, attempts: int, redis, analyzer: Analyzer | None, store: PhotoStore | None,
-    reporter: ReportServiceClient, triager=None,
+    reporter: ReportServiceClient, triager=None, verifier=None,
 ) -> bool:
     """Process one message. True means it is finished (acknowledge it); False means try again later."""
     kind = fields.get("type")
-    if kind not in (IMAGE_EVENT, TRIAGE_EVENT):
+    if kind not in (IMAGE_EVENT, TRIAGE_EVENT, FIX_EVENT):
         return True
     try:
         data = json.loads(fields["data"])
-        subject = data["image_id"] if kind == IMAGE_EVENT else data["report_id"]
+        subject = data["report_id"] if kind == TRIAGE_EVENT else data["image_id"]
     except (KeyError, ValueError, TypeError):
         logger.warning("dropping a malformed %s event", kind)
         return True
@@ -66,6 +69,10 @@ async def handle(
         if analyzer is None or store is None:
             return True  # photo analysis is off: the photo simply keeps waiting
         send, cap_name, cap = reporter.send_analysis, "analyses", settings.ANALYSIS_MAX_PER_DAY
+    elif kind == FIX_EVENT:
+        if verifier is None or store is None:
+            return True  # fix verification is off
+        send, cap_name, cap = reporter.send_verification, "verifications", settings.VERIFY_MAX_PER_DAY
     else:
         if triager is None:
             return True  # text triage is off
@@ -96,6 +103,18 @@ async def handle(
                 "status": "done", "severity": findings.severity, "analysis": findings.model_dump(),
                 "provider": analyzer.provider, "model": analyzer.model, "attempts": attempts,
             }
+        elif kind == FIX_EVENT:
+            after = await store.get(data["storage_key"])
+            before = await store.get(data["before_key"]) if data.get("before_key") else None
+            verdict = await verifier.verify(
+                after, data.get("content_type", "image/jpeg"),
+                FixContext(data.get("title", ""), data.get("description", ""), data.get("category", "Other")),
+                before, data.get("before_content_type") or "image/jpeg",
+            )
+            body = {
+                "status": "done", "verification": verdict.model_dump(),
+                "provider": verifier.provider, "model": verifier.model, "attempts": attempts,
+            }
         else:
             triage = await triager.triage(TextContext(data.get("title", ""), data.get("description", ""), data.get("category", "Other")))
             body = {
@@ -123,10 +142,10 @@ async def handle(
     return True
 
 
-async def _run_batch(entries, attempts_of, redis, analyzer, store, reporter, triager) -> None:
+async def _run_batch(entries, attempts_of, redis, analyzer, store, reporter, triager, verifier=None) -> None:
     async def one(msg_id, fields):
         try:
-            finished = await handle(fields, attempts_of(msg_id), redis, analyzer, store, reporter, triager)
+            finished = await handle(fields, attempts_of(msg_id), redis, analyzer, store, reporter, triager, verifier)
         except Exception:
             logger.exception("handler crashed on %s", msg_id)
             finished = False
@@ -138,7 +157,7 @@ async def _run_batch(entries, attempts_of, redis, analyzer, store, reporter, tri
 
 async def process_once(
     redis, analyzer: Analyzer | None, store: PhotoStore | None, reporter: ReportServiceClient,
-    block_ms: int = 2000, triager=None,
+    block_ms: int = 2000, triager=None, verifier=None,
 ) -> int:
     """Handle new messages, then any failed ones whose delay has passed. Returns how many were handled."""
     handled = 0
@@ -150,7 +169,7 @@ async def process_once(
     )
     for _stream, entries in reply or []:
         just_read.update(m for m, _ in entries)
-        await _run_batch(entries, lambda _id: 1, redis, analyzer, store, reporter, triager)
+        await _run_batch(entries, lambda _id: 1, redis, analyzer, store, reporter, triager, verifier)
         handled += len(entries)
 
     # Messages delivered earlier and never acknowledged: retry them once their back-off has passed.
@@ -169,20 +188,21 @@ async def process_once(
             settings.EVENT_STREAM, settings.CONSUMER_GROUP, CONSUMER,
             min_idle_time=RETRY_BACKOFF[0] * 1000, message_ids=list(due),
         )
-        await _run_batch(claimed, lambda _id: due.get(_id, 2), redis, analyzer, store, reporter, triager)
+        await _run_batch(claimed, lambda _id: due.get(_id, 2), redis, analyzer, store, reporter, triager, verifier)
         handled += len(claimed)
     return handled
 
 
 async def run_worker(
     stop: asyncio.Event, redis, analyzer: Analyzer | None, store: PhotoStore | None,
-    reporter: ReportServiceClient, triager=None,
+    reporter: ReportServiceClient, triager=None, verifier=None,
 ) -> None:
     """Background loop. Errors only delay work; they never raise."""
     logger.info(
-        "ai worker on: photos=%s text=%s",
+        "ai worker on: photos=%s text=%s fixes=%s",
         f"{analyzer.provider}/{analyzer.model}" if analyzer else "off",
         f"{triager.provider}/{triager.model}" if triager else "off",
+        f"{verifier.provider}/{verifier.model}" if verifier else "off",
     )
     ready = False
     while not stop.is_set():
@@ -190,7 +210,7 @@ async def run_worker(
             if not ready:
                 await ensure_group(redis)
                 ready = True
-            await process_once(redis, analyzer, store, reporter, triager=triager)
+            await process_once(redis, analyzer, store, reporter, triager=triager, verifier=verifier)
         except Exception:
             logger.warning("worker loop error, retrying", exc_info=True)
             try:

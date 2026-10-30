@@ -25,6 +25,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 7 | ai-service extracted (stream consumer, internal results endpoint, tests) | [x] |
 | 8 | Text triage: language, translation, urgency, spam (separate small text model) | [x] |
 | 9 | Duplicate detection, "me too" and people-affected count | [x] |
+| 10 | Before/after fix verification (repair photo compared with the original by the vision model) | [x] |
 
 ## Log
 - Stage 1 started: cloned repo to working folder, created `microservices` branch.
@@ -46,11 +47,11 @@ Legend: [x] done, [~] in progress, [ ] todo
 ```
 POSTGRES_PORT=5433 REDIS_PORT=6380 docker compose up -d postgres redis
 docker compose build report-service
-docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/reports_db \
+docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/reports_test \
   -e ADMIN_API_KEY=testkey --entrypoint sh report-service \
   -c "pip install -q -r requirements-dev.txt && alembic upgrade head && pytest -q"
 ```
-(Tests TRUNCATE tables and FLUSHDB Redis - use only a throwaway stack.)
+(Tests TRUNCATE tables and FLUSHDB Redis. Always use the separate `reports_test` database, never `reports_db`, or your local demo data is wiped.)
 
 ai-service (needs the compose Redis): `docker compose run --rm --no-deps -e TEST_REDIS_URL=redis://redis:6379/5 --entrypoint sh ai-service -c "pip install -q -r requirements-dev.txt && pytest -q"`
 

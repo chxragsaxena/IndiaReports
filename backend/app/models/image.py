@@ -22,6 +22,10 @@ class ReportImage(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    # "report": a photo of the problem. "fix": an officer's photo of the finished repair, which the
+    # ai-service compares with the original photo instead of analysing it on its own.
+    kind: Mapped[str] = mapped_column(String(10), nullable=False, server_default="report")
+
     storage_key: Mapped[str] = mapped_column(String(300), nullable=False)
     content_type: Mapped[str] = mapped_column(String(50), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -38,6 +42,8 @@ class ReportImage(Base):
 
     severity: Mapped[str | None] = mapped_column(String(20), nullable=True)
     analysis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # For a fix photo: the before/after verdict (fixed, partly_fixed, not_fixed, cannot_tell).
+    verification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     analysis_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
     analysis_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
