@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.analyzer import analysis_enabled
+from app.core.alerts import analysis_enabled
 from app.core.auth import hash_password
 from app.core.config import settings
 from app.core.storage import get_store

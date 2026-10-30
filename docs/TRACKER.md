@@ -4,7 +4,7 @@ Branch: `microservices` (never commit to `main` directly - it is live on Vercel/
 Legend: [x] done, [~] in progress, [ ] todo
 
 ## Decisions
-- Small demo microservices, not a large system: **report-service** (Python/FastAPI), **notifier** (Go), **analytics** (Go).
+- Small demo microservices, not a large system: **report-service** (Python/FastAPI), **notifier** (Go), **analytics** (Go), **ai-service** (Python/FastAPI, photo analysis; extracted from report-service).
 - No API gateway. Frontend calls each service directly (CORS configured per service).
 - Broker: **Redis Streams** (Render offers a free Redis-compatible Key Value store).
 - Each service owns its own database. Local compose uses one Postgres instance with 3 databases.
@@ -22,6 +22,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 4b | Area polygons + officer assignment (PostGIS ST_Contains), acknowledge link, 7-day escalation to admin, notifier direct messages | [x] |
 | 5 | Frontend redesign: design system, map UI, dashboard, live pins, subscribe, acknowledge page, XSS fix | [x] |
 | 6 | End-to-end verification, load test, README, deploy notes | [x] |
+| 7 | ai-service extracted (stream consumer, internal results endpoint, tests) | [x] |
 
 ## Log
 - Stage 1 started: cloned repo to working folder, created `microservices` branch.
@@ -48,6 +49,8 @@ docker compose run --rm --no-deps -e DATABASE_URL=postgresql+asyncpg://postgres:
   -c "pip install -q -r requirements-dev.txt && alembic upgrade head && pytest -q"
 ```
 (Tests TRUNCATE tables and FLUSHDB Redis - use only a throwaway stack.)
+
+ai-service (needs the compose Redis): `docker compose run --rm --no-deps -e TEST_REDIS_URL=redis://redis:6379/5 --entrypoint sh ai-service -c "pip install -q -r requirements-dev.txt && pytest -q"`
 
 ## Owner notes for report-service deploy
 - New optional env vars: `REDIS_URL`, `ADMIN_API_KEY`, `CORS_ORIGINS` (set to your Vercel URL), `RATE_LIMIT_PER_MINUTE`.

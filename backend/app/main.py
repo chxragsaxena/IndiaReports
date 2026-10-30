@@ -9,13 +9,11 @@ from sqlalchemy.exc import TimeoutError as SATimeoutError
 from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
-from app.analysis.analyzer import build_analyzer
 from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.redis import close_redis, get_redis
 from app.core.storage import get_store
 from app.db.session import engine
-from app.events.analysis import run_analysis
 from app.events.escalation import run_escalation
 from app.core.auth import signing_source
 from app.events.lifecycle import run_lifecycle
@@ -61,7 +59,6 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_rollup(stop)),
         asyncio.create_task(run_lifecycle(stop)),
         asyncio.create_task(run_mailer(stop)),
-        asyncio.create_task(run_analysis(stop, build_analyzer())),
     ]
     try:
         yield

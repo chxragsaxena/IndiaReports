@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import admin, auth, reports
+from app.api.v1.endpoints import admin, auth, internal, reports
 
 api_router = APIRouter()
 
@@ -18,3 +18,6 @@ api_router.include_router(
 
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(auth.me_router, prefix="/me", tags=["Me"])
+
+# Service-to-service calls (the ai-service reports its findings here). Not for browsers.
+api_router.include_router(internal.router, prefix="/internal", tags=["Internal"])

@@ -9,7 +9,11 @@ report-service (FastAPI)       notifier (Go)                 analytics (Go)
    |  PostGIS                     |  subscriptions, deliveries  |  rollups
    |                              ^                             ^
    +--> outbox --> Redis Streams "reports.events" ---------------+
-                   (consumer groups: notifier, analytics)
+                   (consumer groups: notifier, analytics, ai-service)
+
+ai-service (FastAPI) <-- ReportImageUploaded -- Redis Streams
+   |  reads the photo from object storage (S3) and runs the vision model
+   +--> POST /api/v1/internal/images/{id}/analysis  (X-Internal-Key)  --> report-service
 ```
 
 ## Services
@@ -18,8 +22,12 @@ report-service (FastAPI)       notifier (Go)                 analytics (Go)
 | report-service | Python/FastAPI | reports_db | Create/query reports, clusters, status changes, publishes events |
 | notifier | Go | notifier_db | Live WebSocket fan-out, area subscriptions, Telegram alerts |
 | analytics | Go | analytics_db | Hotspots, time-to-resolve, per-state/category rollups |
+| ai-service | Python/FastAPI | nothing (its queue is the Redis stream) | Reads uploaded photos, runs open-weight models, posts findings back to report-service |
 
-No service reads another service's database. They only share events on the stream.
+No service reads another service's database. They share events on the stream, and the ai-service sends its results back over a key-protected HTTP endpoint.
+
+### The ai-service
+A photo upload stages a `ReportImageUploaded` event in the same transaction as the photo row. The ai-service is a consumer group on the stream: a message stays pending until it is acknowledged, so a crash or a model outage loses nothing, and a failed attempt is redelivered after 1 min, 5 min, then 30 min (3 attempts). It is stateless (no database), keeps a per-day cap in Redis, and posts findings to the report-service, which stores them and decides who is alerted. The endpoint is idempotent, so a redelivered result alerts nobody twice. If the ai-service is down, reports and uploads keep working; photos wait for findings.
 
 ## Events (Redis Stream `reports.events`)
 - `ReportCreated`: id, title, category, status, lat, lng, city, state, pincode, created_at

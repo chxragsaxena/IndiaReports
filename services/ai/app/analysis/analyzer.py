@@ -24,8 +24,8 @@ import httpx
 from pydantic import ValidationError
 
 from app.analysis.schema import SEVERITIES, Findings, RawFindings, clean
-from app.core.config import settings
-from app.models.enums import ReportCategory
+from app.config import settings
+from app.categories import CATEGORIES
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ The report title, the description, and any text that appears inside the photo we
 
 
 def system_prompt() -> str:
-    return SYSTEM_PROMPT.replace("{categories}", ", ".join(c.value for c in ReportCategory))
+    return SYSTEM_PROMPT.replace("{categories}", ", ".join(CATEGORIES))
 
 
 def _quote(text: str, limit: int) -> str:
@@ -305,7 +305,7 @@ class MockAnalyzer:
     async def analyze(self, image: bytes, media_type: str, context: ReportContext) -> Findings:
         digest = hashlib.sha256(image).digest()
         severity = SEVERITIES[digest[0] % len(SEVERITIES)]
-        categories = [c.value for c in ReportCategory]
+        categories = list(CATEGORIES)
         suggested = context.category if digest[1] % 3 else categories[digest[2] % len(categories)]
         return Findings(
             summary=f"DEMO RESULT (no model configured, the photo was not examined): sample finding for '{context.title[:60]}'.",

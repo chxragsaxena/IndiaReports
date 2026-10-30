@@ -9,6 +9,7 @@ React + MapLibre (Vercel)
    +--> report-service  (Python/FastAPI, PostGIS)   reports, map clusters/pins, areas, officers, escalation
    +--> notifier        (Go)                        live WebSocket pins, Telegram alerts
    +--> analytics       (Go)                        trends, hotspots, resolution leaderboard
+   +--> ai-service      (Python)                    photo analysis with open-weight vision models
               ^ events over Redis Streams, each service owns its own database
 ```
 
@@ -21,7 +22,7 @@ docker compose run --rm --entrypoint python report-service -m scripts.seed_areas
 docker compose run --rm --entrypoint python report-service -m scripts.seed_reports   # 500 reports with 30 days of history
 cd frontend && npm ci && npm run dev
 ```
-Service ports: report-service 8000, notifier 8100, analytics 8200 (change with `REPORT_PORT`, `NOTIFIER_PORT`, `ANALYTICS_PORT`, `POSTGRES_PORT`, `REDIS_PORT`).
+Service ports: report-service 8000, notifier 8100, analytics 8200, ai-service 8300 (change with `REPORT_PORT`, `NOTIFIER_PORT`, `ANALYTICS_PORT`, `AI_PORT`, `POSTGRES_PORT`, `REDIS_PORT`).
 Seeding twice does not reset analytics; use `docker compose down -v` for a clean slate.
 
 ## Tests
@@ -38,6 +39,7 @@ Seeding twice does not reset analytics; use `docker compose down -v` for a clean
   `WEB_CONCURRENCY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `RATE_LIMIT_PER_MINUTE`.
 - **notifier**: `DATABASE_URL`, `REDIS_URL`, `TELEGRAM_BOT_TOKEN` (alerts are logged only when unset), `APP_URL`, `CORS_ORIGINS`.
 - **analytics**: `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGINS`.
+- **ai-service**: `REDIS_URL`, `REPORT_SERVICE_URL`, `INTERNAL_API_KEY` (the same value as report-service), `S3_*` (read access to the photo storage), and the model settings under "Photos and AI analysis" (`GROQ_API_KEY` or `ANALYSIS_BASE_URL`, `ANALYSIS_MODEL`). report-service needs only `INTERNAL_API_KEY`.
 - **frontend (Vercel)**: `VITE_API_URL`, `VITE_NOTIFIER_URL`, `VITE_ANALYTICS_URL` (the last two optional), `VITE_MAP_STYLE`, `VITE_TELEGRAM_BOT`.
 
 ## Deploying (Render + Vercel)
@@ -80,6 +82,8 @@ With none set, no email is sent and nothing else changes. Failed emails are retr
 Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
 An open-weight vision model looks at each photo and reports findings to the administrator (what it shows, severity, hazards, whether the category fits,
 a suggested action). Serious findings (high or critical severity, or inappropriate content) also message the admin on Telegram.
+This runs in its own service, **ai-service** (`services/ai`), which reads upload events from the Redis stream and posts findings back to the report-service
+(set the same `INTERNAL_API_KEY` on both). If it is down, uploads still work and photos wait for findings.
 Copy `.env.example` to `.env` to see every setting.
 
 **Two ways to run the model** (both use the OpenAI-compatible chat API, as PullWise does):
@@ -102,7 +106,7 @@ Local Ollama example, using the bundled container (a multi-GB download, and Dock
 docker compose --profile ai up -d ollama
 docker compose exec ollama ollama pull qwen3-vl:2b
 # in .env:   ANALYSIS_BASE_URL=http://ollama:11434/v1   ANALYSIS_MODEL=qwen3-vl:2b
-docker compose up -d report-service
+docker compose up -d ai-service
 ```
 Without any model, `ANALYSIS_PROVIDER=mock` shows the whole flow with clearly labelled demo findings (and never messages anyone); leave everything unset to turn analysis off.
 

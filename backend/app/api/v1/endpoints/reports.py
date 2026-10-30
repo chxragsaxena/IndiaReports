@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import current_user_optional, require_user
 from app.core.images import ImageRejected, TooLarge, process_image, read_limited
 from app.core.storage import get_store
+from app.events.outbox import add_event
 from app.models.image import ReportImage
 from app.models.report import Report
 from app.schemas.image import ImageUploadResponse
@@ -266,5 +267,12 @@ async def upload_report_image(
             height=processed.height,
         )
     )
+    # Tells the ai-service there is a photo to look at. Staged in the same transaction as the
+    # row, so a photo is never stored without the work being queued.
+    add_event(db, "ReportImageUploaded", {
+        "image_id": str(image_id), "report_id": str(report_id), "storage_key": key,
+        "content_type": processed.content_type, "title": report.title,
+        "description": report.description, "category": report.category,
+    })
     await db.commit()
     return ImageUploadResponse(id=image_id, width=processed.width, height=processed.height)

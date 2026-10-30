@@ -63,13 +63,8 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-devaccesskey}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-devsecretkey123}
       S3_REGION: us-east-1
-      # AI photo analysis with an open-source vision model. Empty provider and base URL
-      # means analysis is off (photos are still stored). See README, "Photos and AI analysis".
-      ANALYSIS_PROVIDER: ${ANALYSIS_PROVIDER:-}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      ANALYSIS_BASE_URL: ${ANALYSIS_BASE_URL:-}
-      ANALYSIS_MODEL: ${ANALYSIS_MODEL:-}
-      ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
+      # Shared secret the ai-service uses to post photo findings back (see ai-service below).
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
     ports:
       - "${REPORT_PORT:-8000}:8000"
     restart: on-failure
@@ -108,6 +103,34 @@ services:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
+
+  # Looks at uploaded photos with an open-weight vision model. Stateless: its work queue is the
+  # Redis event stream, and it posts findings back to the report-service over HTTP. With no model
+  # configured it idles and photos are simply stored. See README, "Photos and AI analysis".
+  ai-service:
+    build: ./services/ai
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      REPORT_SERVICE_URL: http://report-service:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
+      S3_ENDPOINT_URL: http://storage:8000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-devaccesskey}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-devsecretkey123}
+      S3_REGION: us-east-1
+      ANALYSIS_PROVIDER: ${ANALYSIS_PROVIDER:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      ANALYSIS_BASE_URL: ${ANALYSIS_BASE_URL:-}
+      ANALYSIS_MODEL: ${ANALYSIS_MODEL:-}
+      ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
+      PORT: "8300"
+    ports:
+      - "${AI_PORT:-8300}:8300"
+    restart: on-failure
+    depends_on:
+      redis:
+        condition: service_healthy
+      storage:
+        condition: service_started
 
   notifier:
     build: ./services/notifier

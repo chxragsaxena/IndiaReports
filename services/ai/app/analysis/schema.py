@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.models.enums import ReportCategory
+from app.categories import CATEGORIES
 
 Severity = Literal["low", "medium", "high", "critical"]
 SEVERITIES: tuple[str, ...] = ("low", "medium", "high", "critical")
@@ -15,7 +15,7 @@ Flag = Literal[
     "screenshot_or_stock_photo",
     "likely_unrelated",
 ]
-CategoryName = Literal[tuple(c.value for c in ReportCategory)]  # type: ignore[valid-type]
+CategoryName = Literal[CATEGORIES]  # type: ignore[valid-type]
 
 
 class RawFindings(BaseModel):
