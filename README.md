@@ -71,6 +71,8 @@ On a host with no shell (Render free tier), run `python -m scripts.make_admin yo
 anyway, staff see "may be a copy of an older report"; nothing is hidden or merged automatically. This needs no AI model: it is a map-distance and word-overlap check, so it also
 works offline of any model (reports in different languages only match by distance).
 
+**Scorecards.** The public **Scorecards** page ranks each area on the share of reports resolved within the deadline (reports still inside it are not counted against anyone), the median time to fix, how often the reporter disputed the fix, and what is open or escalated. Reports stay counted against the area they were routed to even after they escalate, and spam is left out. Counts only: no report text is shown.
+
 The main administrator manages officers and areas on the **Team** page (an area is a GeoJSON polygon, which you can draw at geojson.io).
 Officers sign in on the **Administrator** tab and see only their own area's queue.
 

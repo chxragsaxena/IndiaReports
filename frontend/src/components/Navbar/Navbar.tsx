@@ -26,6 +26,9 @@ function Navbar() {
                 <NavLink to="/" end className={linkClass}>
                     Map
                 </NavLink>
+                <NavLink to="/scorecards" className={linkClass}>
+                    Scorecards
+                </NavLink>
                 {isStaff(user?.role) && (
                     <>
                         <NavLink to="/admin" end className={linkClass}>

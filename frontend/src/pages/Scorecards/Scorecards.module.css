@@ -1,0 +1,133 @@
+.page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 20px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.sub {
+    margin-top: 4px;
+    color: var(--text-2);
+}
+
+.problem {
+    color: var(--danger);
+}
+
+.muted {
+    color: var(--text-3);
+    font-size: 0.82rem;
+}
+
+.tableWrap {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.table th,
+.table td {
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.table thead th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-3);
+    background: var(--surface-2);
+}
+
+.table tbody tr:last-child th,
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table tbody th {
+    font-weight: 400;
+    min-width: 200px;
+}
+
+.rank {
+    width: 36px;
+    font-weight: 700;
+    color: var(--text-3);
+}
+
+.area {
+    display: block;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.meter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 200px;
+}
+
+.track {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+}
+
+.track > div {
+    height: 100%;
+    border-radius: 999px;
+}
+
+.good {
+    background: #16a34a;
+}
+
+.fair {
+    background: #d97706;
+}
+
+.poor {
+    background: #dc2626;
+}
+
+.late {
+    color: #b91c1c;
+    font-size: 0.82rem;
+}
+
+.how {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+}
+
+.how h2 {
+    font-size: 1rem;
+    margin-bottom: 8px;
+}
+
+.how ul {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--text-2);
+    font-size: 0.9rem;
+}

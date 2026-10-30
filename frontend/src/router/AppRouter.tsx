@@ -9,6 +9,7 @@ import Skeleton from "../components/UI/Skeleton/Skeleton";
 // never download it.
 const Home = lazy(() => import("../pages/Home/Home"));
 const ReportPage = lazy(() => import("../pages/Report/ReportPage"));
+const Scorecards = lazy(() => import("../pages/Scorecards/Scorecards"));
 const Dashboard = lazy(() => import("../pages/Dashboard/Dashboard"));
 const Acknowledge = lazy(() => import("../pages/Acknowledge/Acknowledge"));
 const Admin = lazy(() => import("../pages/Admin/Admin"));
@@ -36,6 +37,7 @@ function AppRouter() {
                         <Route path="/" element={<Home />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/ack" element={<Acknowledge />} />
+                        <Route path="/scorecards" element={<Scorecards />} />
 
                         {/* Signed-in people */}
                         <Route path="/report" element={<RequireRole><ReportPage /></RequireRole>} />

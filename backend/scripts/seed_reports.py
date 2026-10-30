@@ -272,6 +272,8 @@ async def seed():
             if assignee is not None:
                 report.assigned_officer_id = assignee.id
                 report.assigned_at = created_at
+                if assignee.role == "officer":
+                    report.area_id = assignee.area_id
 
             # Old, never-acknowledged reports have already escalated to the admin; recording
             # that here stops the live escalation job from alerting about the whole backlog.
@@ -292,6 +294,10 @@ async def seed():
                 changed_at = resolved_at or (created_at + timedelta(hours=random.randint(1, 36)))
                 changed_at = min(changed_at, now - timedelta(minutes=1))
                 report.status = status
+                if status == ReportStatus.RESOLVED.value:
+                    report.resolved_at = changed_at
+                    if random.random() < 0.12:
+                        report.reopen_count = 1
                 report.acknowledged_at = created_at + timedelta(minutes=random.randint(10, 600))
                 report.updated_at = changed_at
                 add_event(

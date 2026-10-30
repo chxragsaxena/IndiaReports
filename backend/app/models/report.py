@@ -87,6 +87,15 @@ class Report(Base, TimestampMixin):
         nullable=True,
     )
 
+    # The area this report was routed to when it arrived. It stays when the report escalates to the
+    # main administrator, so an area's scorecard still counts the reports it let slip. Null when no area
+    # contained the point.
+    area_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("areas.id", ondelete="SET NULL"), nullable=True
+    )
+    # How many times the reporter said "not fixed" after it was marked resolved.
+    reopen_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
     # Who filed it, when they were signed in. Null for anonymous reports.
     reporter_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

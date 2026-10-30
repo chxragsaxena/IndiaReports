@@ -68,6 +68,7 @@ class ReportService:
             created_at=now,
             updated_at=now,
             assigned_officer_id=assignee.id if assignee else None,
+            area_id=assignee.area_id if assignee and assignee.role == "officer" else None,
             assigned_at=now if assignee else None,
             acknowledged_at=None,
             escalated_at=None,
@@ -235,6 +236,7 @@ class ReportService:
         now = datetime.now(timezone.utc)
 
         report.status = ReportStatus.OPEN.value
+        report.reopen_count = report.reopen_count + 1
         report.resolved_at = report.resolved_by = report.resolution_note = report.confirmed_at = None
         report.acknowledged_at = None
         report.assigned_at = now  # the clock starts again

@@ -26,6 +26,7 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 8 | Text triage: language, translation, urgency, spam (separate small text model) | [x] |
 | 9 | Duplicate detection, "me too" and people-affected count | [x] |
 | 10 | Before/after fix verification (repair photo compared with the original by the vision model) | [x] |
+| 11 | Public area scorecards (resolved in time, time to fix, disputed fixes, escalations) | [x] |
 
 ## Log
 - Stage 1 started: cloned repo to working folder, created `microservices` branch.
