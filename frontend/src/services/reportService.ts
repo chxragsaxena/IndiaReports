@@ -157,6 +157,29 @@ export async function getMyReports(before?: string | null, signal?: AbortSignal)
     return response.data;
 }
 
+export interface SimilarReport {
+    id: string;
+    title: string;
+    category: string;
+    status: string;
+    distance_m: number;
+    affected_count: number;
+    created_at: string | null;
+}
+
+/** Open reports nearby that look like the same problem (public, no sign-in needed). */
+export async function findSimilar(
+    p: { latitude: number; longitude: number; category: string; title: string; description: string },
+    signal?: AbortSignal,
+): Promise<SimilarReport[]> {
+    return (await api.get<SimilarReport[]>("/reports/similar", { params: p, signal })).data;
+}
+
+/** "Me too": count the signed-in person as affected by this problem (once each). */
+export async function supportReport(id: string): Promise<{ affected_count: number; added: boolean }> {
+    return (await api.post(`/reports/${encodeURIComponent(id)}/support`)).data;
+}
+
 /** The reporter says the fix is real; the report then leaves the public map. */
 export async function confirmResolved(id: string): Promise<Report> {
     return (await api.post<Report>(`/reports/${encodeURIComponent(id)}/confirm`)).data;

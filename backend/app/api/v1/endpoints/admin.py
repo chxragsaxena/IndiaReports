@@ -270,7 +270,7 @@ async def list_reports_for_admin(
                 resolution_note=r.resolution_note, due_at=due, overdue=bool(due and due <= now),
                 assignee_name=name, assignee_role=role,
                 image_count=count, ai_severity=worst, ai_pending=pending,
-                ai_urgency=(r.triage or {}).get("urgency"), ai_spam=bool((r.triage or {}).get("is_spam")),
+                affected_count=r.affected_count, ai_urgency=(r.triage or {}).get("urgency"), ai_spam=bool((r.triage or {}).get("is_spam")),
                 language=_foreign_language(r.triage),
             )
         )
@@ -311,6 +311,9 @@ async def report_detail(
     store = get_store()
     assignee = await db.get(Officer, report.assigned_officer_id) if report.assigned_officer_id else None
 
+    original = await db.get(Report, report.possible_duplicate_of) if report.possible_duplicate_of else None
+    possible_duplicate = {"id": str(original.id), "title": original.title, "status": original.status} if original else None
+
     return AdminReportDetail(
         id=report.id, title=report.title, description=report.description, category=report.category,
         status=report.status, address=report.address, city=report.city, district=report.district,
@@ -319,7 +322,8 @@ async def report_detail(
         acknowledged_at=report.acknowledged_at, escalated_at=report.escalated_at,
         resolved_at=report.resolved_at, resolution_note=report.resolution_note,
         assignee_name=assignee.name if assignee else None,
-        analysis_enabled=analysis_enabled(), triage=report.triage,
+        analysis_enabled=analysis_enabled(), triage=report.triage, affected_count=report.affected_count,
+        possible_duplicate=possible_duplicate,
         images=[
             AdminImage(
                 id=i.id,

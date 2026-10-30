@@ -11,6 +11,7 @@ import { CATEGORIES } from "../../types/report";
 import type { Report } from "../../types/report";
 import { reverseGeocode } from "../../utils/geocode";
 import LocationPicker from "./LocationPicker";
+import SimilarNearby from "../../components/MeToo/SimilarNearby";
 import styles from "./ReportPage.module.css";
 
 interface FormState {
@@ -260,6 +261,14 @@ function ReportPage() {
                         placeholder="What happened, how long it has been like this, and who it affects."
                     />
                 </fieldset>
+
+                <SimilarNearby
+                    latitude={form.latitude}
+                    longitude={form.longitude}
+                    category={form.category}
+                    title={form.title}
+                    description={form.description}
+                />
 
                 <fieldset className={styles.section}>
                     <legend>Where is it?</legend>

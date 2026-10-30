@@ -231,6 +231,7 @@ function Admin() {
                                                         ? `${r.image_count} photo${r.image_count === 1 ? "" : "s"}`
                                                         : "Details"}
                                                 </button>
+                                                {r.affected_count > 1 && <span className={styles.muted}>{r.affected_count} affected</span>}
                                                 {r.ai_spam && <span className={styles.spam}>Possible spam</span>}
                                                 {r.language && <span className={styles.muted}>{r.language}</span>}
                                                 {r.ai_severity ? (

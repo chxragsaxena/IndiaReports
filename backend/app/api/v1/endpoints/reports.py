@@ -20,7 +20,16 @@ from app.models.user import User
 from app.core.security import Staff, require_staff
 from app.db.session import get_db
 from app.schemas.admin import AcknowledgeRequest
-from app.schemas.report import ReopenRequest, ReportCreate, ReportResponse, ReportStatusUpdate
+from app.schemas.report import (
+    ReopenRequest,
+    ReportCreate,
+    ReportResponse,
+    ReportStatusUpdate,
+    SimilarReport,
+    SupportResponse,
+)
+from app.models.enums import ReportCategory
+from app.services.similarity import find_similar
 from app.services import assignment_service
 from app.services.report_service import ReportService
 
@@ -143,6 +152,26 @@ async def get_pins(
     )
 
 
+@router.get("/similar", response_model=list[SimilarReport])
+async def similar_reports(
+    latitude: float = Query(ge=6.0, le=38.0),
+    longitude: float = Query(ge=68.0, le=98.0),
+    category: ReportCategory = Query(),
+    title: str = Query(min_length=3, max_length=255),
+    description: str = Query(default="", max_length=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    """Before filing: is this problem already reported right here? Lets the person say "me too"."""
+    found = await find_similar(db, latitude, longitude, category.value, title, description)
+    return [
+        SimilarReport(
+            id=m.report.id, title=m.report.title, category=m.report.category, status=m.report.status,
+            distance_m=round(m.distance_m), affected_count=m.report.affected_count, created_at=m.report.created_at,
+        )
+        for m in found
+    ]
+
+
 @router.get(
     "/{report_id}",
     response_model=ReportResponse,
@@ -190,6 +219,17 @@ async def update_report_status(
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found.")
     return report
+
+
+@router.post("/{report_id}/support", response_model=SupportResponse, dependencies=[Depends(rate_limit_writes)])
+async def support_report(
+    report_id: UUID,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """"Me too": count this person as affected by the same problem (once each)."""
+    report, added = await ReportService.support(db, report_id, user)
+    return SupportResponse(affected_count=report.affected_count, added=added)
 
 
 @router.post("/{report_id}/confirm", response_model=ReportResponse)

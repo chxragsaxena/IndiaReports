@@ -163,6 +163,15 @@ function AdminReportDetail({ reportId, onClose }: Props) {
                         <span className={styles.muted}>{formatDateTime(detail.created_at)}</span>
                     </div>
                     <p className={styles.description}>{detail.description}</p>
+                    {detail.affected_count > 1 && (
+                        <p className={styles.muted}>{detail.affected_count} people have reported or confirmed this problem.</p>
+                    )}
+                    {detail.possible_duplicate && (
+                        <p className={styles.warn}>
+                            May be a copy of an older report: &ldquo;{detail.possible_duplicate.title}&rdquo; (
+                            {detail.possible_duplicate.status.toLowerCase().replace("_", " ")}).
+                        </p>
+                    )}
                     {detail.triage && <TriagePanel triage={detail.triage} />}
                     <p className={styles.muted}>
                         {[detail.address, detail.city, detail.district, detail.state, detail.pincode].filter(Boolean).join(", ")}

@@ -29,6 +29,23 @@ class ReportStatusUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
+class SimilarReport(BaseModel):
+    """An open report nearby that looks like the same problem (public fields only)."""
+
+    id: UUID
+    title: str
+    category: ReportCategory
+    status: ReportStatus
+    distance_m: int
+    affected_count: int
+    created_at: datetime | None = None
+
+
+class SupportResponse(BaseModel):
+    affected_count: int
+    added: bool  # false when this person had already said so, or reported it themselves
+
+
 class ReopenRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
@@ -67,6 +84,9 @@ class ReportResponse(BaseModel):
     resolution_note: str | None = None
     confirmed_at: datetime | None = None
     archived_at: datetime | None = None
+
+    # How many people this affects: the reporter plus everyone who said "me too".
+    affected_count: int = 1
 
     @computed_field
     @property

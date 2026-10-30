@@ -4,7 +4,7 @@ from geoalchemy2 import Geometry
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -120,7 +120,27 @@ class Report(Base, TimestampMixin):
     # the reporter's and officers' lists; it is just no longer drawn or counted.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # How many people this problem affects: the reporter plus everyone who said "me too".
+    affected_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    # Set when this looks like a copy of an older open report nearby. Staff see it; nothing is hidden.
+    possible_duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reports.id", ondelete="SET NULL"), nullable=True
+    )
+
     # What the ai-service made of the report text (language, English translation, urgency, spam
     # likelihood). Assistive and for staff only: never shown to the public or the reporter.
     triage: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class ReportSupporter(Base):
+    """Someone who said "me too" about a report that is not their own, so it counts once per person."""
+
+    __tablename__ = "report_supporters"
+
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

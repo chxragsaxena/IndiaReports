@@ -6,6 +6,7 @@ import Button from "../UI/Button/Button";
 import Skeleton from "../UI/Skeleton/Skeleton";
 import { useToast } from "../UI/Toast/Toast";
 import { ESCALATION_DAYS } from "../../config/api";
+import MeToo from "../MeToo/MeToo";
 import { getReport } from "../../services/reportService";
 import type { Report } from "../../types/report";
 import { formatDateTime } from "../../utils/format";
@@ -142,6 +143,8 @@ function ReportDetailsDrawer({ reportId, onClose }: Props) {
                     </div>
 
                     <p className={styles.description}>{report.description}</p>
+
+                    <MeToo key={report.id} reportId={report.id} count={report.affected_count ?? 1} open={report.status !== "RESOLVED"} />
 
                     <section>
                         <h3>Location</h3>

@@ -32,6 +32,7 @@ export interface AdminReport {
     image_count: number;
     ai_severity: Severity | null;
     ai_pending: boolean;
+    affected_count: number;
     ai_urgency: Severity | null;
     ai_spam: boolean;
     language: string | null;
@@ -180,6 +181,8 @@ export interface AdminReportDetail {
     images: AdminImage[];
     analysis_enabled: boolean;
     triage: Triage | null;
+    affected_count: number;
+    possible_duplicate: { id: string; title: string; status: string } | null;
 }
 
 /** What the ai-service made of the report text. Assistive, for staff only. */

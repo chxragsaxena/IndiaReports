@@ -48,3 +48,5 @@ class AdminReportDetail(BaseModel):
     images: list[AdminImage]
     analysis_enabled: bool
     triage: dict | None = None  # what the ai-service made of the text; staff only
+    affected_count: int = 1
+    possible_duplicate: dict | None = None  # {id, title, status} of the older report this may copy

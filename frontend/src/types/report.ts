@@ -52,6 +52,7 @@ export interface Report {
     /** Set when an officer resolved it. The note is public: it is the answer to the citizen. */
     resolved_at?: string | null;
     resolution_note?: string | null;
+    affected_count?: number;
     /** The reporter confirmed the fix. */
     confirmed_at?: string | null;
     /** Set once it has left the public map (the reporter's window to check it has ended). */

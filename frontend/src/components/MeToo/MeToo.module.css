@@ -1,0 +1,45 @@
+.row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.count {
+    font-weight: 600;
+}
+
+.muted {
+    color: var(--text-3);
+    font-size: 0.85rem;
+}
+
+.card {
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cardTitle {
+    font-weight: 600;
+}
+
+.notice {
+    margin: 0;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notice h3 {
+    margin: 0;
+    font-size: 1rem;
+}

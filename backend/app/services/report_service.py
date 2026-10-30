@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import cached_json
@@ -19,7 +20,8 @@ from app.events.outbox import (
     status_changed_payload,
 )
 from app.models.enums import ReportStatus
-from app.models.report import Report
+from app.models.report import Report, ReportSupporter
+from app.services.similarity import find_similar
 from app.schemas.report import ReportCreate, ReportResponse
 from app.services.assignment_service import find_assignee, recipient_for
 from app.services.cell_service import TOTALS_LEVEL, cell_of, grid_for_zoom, level_for_zoom
@@ -75,6 +77,13 @@ class ReportService:
             ),
         )
         recipient = recipient_for(db_report, assignee) if assignee else None
+
+        # Does an open report about the same problem already exist right here? Staff are told;
+        # the citizen was already offered "me too" before submitting, and nothing is hidden.
+        category = getattr(report.category, "value", report.category)
+        similar = await find_similar(db, report.latitude, report.longitude, category, report.title, report.description, limit=1)
+        if similar:
+            db_report.possible_duplicate_of = similar[0].report.id
 
         db.add(db_report)
 
@@ -153,13 +162,46 @@ class ReportService:
 
     @staticmethod
     async def _tell_reporter_resolved(db: AsyncSession, report: Report) -> None:
-        if report.reporter_id is None:
-            return  # anonymous report: nobody to write to
-        reporter = await db.get(User, report.reporter_id)
-        if reporter is not None:
-            subject, body = resolved_notice(report, reporter.name)
-            stamp = int(report.resolved_at.timestamp()) if report.resolved_at else 0
-            await queue_email(db, reporter.email, subject, body, f"resolved:{report.id}:{stamp}")
+        stamp = int(report.resolved_at.timestamp()) if report.resolved_at else 0
+        if report.reporter_id is not None:  # an anonymous report has nobody to write to
+            reporter = await db.get(User, report.reporter_id)
+            if reporter is not None:
+                subject, body = resolved_notice(report, reporter.name)
+                await queue_email(db, reporter.email, subject, body, f"resolved:{report.id}:{stamp}")
+        # Everyone who said "me too" was waiting for this fix as well.
+        supporters = (
+            await db.execute(
+                select(User).join(ReportSupporter, ReportSupporter.user_id == User.id).where(ReportSupporter.report_id == report.id)
+            )
+        ).scalars().all()
+        for person in supporters:
+            subject, body = resolved_notice(report, person.name)
+            await queue_email(db, person.email, subject, body, f"resolved:{report.id}:{stamp}:{person.id}")
+
+    @staticmethod
+    async def support(db: AsyncSession, report_id: uuid.UUID, user: User) -> tuple[Report, bool]:
+        """"Me too": add this person to the people affected. Counted once per person, and the
+        reporter is already counted. Returns the report and whether this call added someone."""
+        report = (await db.execute(select(Report).where(Report.id == report_id).with_for_update())).scalar_one_or_none()
+        if report is None:
+            raise HTTPException(status_code=404, detail="Report not found.")
+        if report.status == ReportStatus.RESOLVED.value or report.archived_at is not None:
+            raise HTTPException(status_code=409, detail="This problem has already been fixed.")
+        if report.reporter_id == user.id:
+            return report, False
+        added = (
+            await db.execute(
+                pg_insert(ReportSupporter)
+                .values(report_id=report.id, user_id=user.id)
+                .on_conflict_do_nothing()
+                .returning(ReportSupporter.user_id)
+            )
+        ).first()
+        if added is not None:
+            report.affected_count = report.affected_count + 1
+        await db.commit()
+        await db.refresh(report)
+        return report, added is not None
 
     @staticmethod
     async def _own_resolved_report(db: AsyncSession, report_id: uuid.UUID, user: User) -> Report:
