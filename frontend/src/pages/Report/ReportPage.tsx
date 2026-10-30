@@ -69,6 +69,12 @@ function ReportPage() {
     const [photos, setPhotos] = useState<File[]>([]);
     const [uploadNote, setUploadNote] = useState("");
     const [photoCount, setPhotoCount] = useState(0);
+    const [matchKey, setMatchKey] = useState("");
+    const [confirmedNew, setConfirmedNew] = useState(false);
+    const onMatches = useCallback((key: string) => {
+        setMatchKey(key);
+        setConfirmedNew(false); // a different set of matches needs a fresh look
+    }, []);
 
     // Fields the person edited by hand: geocoding must not overwrite them.
     const touched = useRef(new Set<string>());
@@ -136,6 +142,11 @@ function ReportPage() {
         setErrors(found);
         if (Object.keys(found).length > 0) {
             toast.show("Please fix the highlighted fields.", "error");
+            return;
+        }
+
+        if (matchKey !== "" && !confirmedNew) {
+            toast.show("Please check the report(s) that may already exist, then press Me too or confirm yours is different.", "error");
             return;
         }
 
@@ -268,6 +279,9 @@ function ReportPage() {
                     category={form.category}
                     title={form.title}
                     description={form.description}
+                    onMatches={onMatches}
+                    confirmed={confirmedNew}
+                    onConfirm={setConfirmedNew}
                 />
 
                 <fieldset className={styles.section}>

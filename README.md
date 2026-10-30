@@ -67,7 +67,7 @@ On a host with no shell (Render free tier), run `python -m scripts.make_admin yo
    (`RESOLVED_VISIBLE_SECONDS`) so they can check it. They can confirm the fix or reopen it. Then it leaves the map; it is kept in "My reports".
 
 **Same problem, reported twice.** While filing, the form checks for an open report of the same kind within 150 m that is worded alike (or within 30 m, whatever the wording) and offers
-**Me too** instead of a copy. Each signed-in person counts once, the page shows "N people affected", and everyone who said "me too" is emailed when it is fixed. If a copy is filed
+**Me too** instead of a copy. Each signed-in person counts once, the page shows "N people affected", and everyone who said "me too" is emailed when it is fixed. To file anyway, the person must first tick "I have checked, and my problem is different". If a copy is filed
 anyway, staff see "may be a copy of an older report"; nothing is hidden or merged automatically. This needs no AI model: it is a map-distance and word-overlap check, so it also
 works offline of any model (reports in different languages only match by distance).
 

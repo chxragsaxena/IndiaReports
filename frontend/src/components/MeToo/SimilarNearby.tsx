@@ -12,10 +12,14 @@ interface Props {
     category: string;
     title: string;
     description: string;
+    /** Tells the form which reports were found ("" when none), so it can ask for a confirmation. */
+    onMatches: (key: string) => void;
+    confirmed: boolean;
+    onConfirm: (confirmed: boolean) => void;
 }
 
 /** While filing: is this problem already reported here? Offers "me too" instead of a copy. */
-function SimilarNearby({ latitude, longitude, category, title, description }: Props) {
+function SimilarNearby({ latitude, longitude, category, title, description, onMatches, confirmed, onConfirm }: Props) {
     const [found, setFound] = useState<SimilarReport[]>([]);
     const ready = latitude !== null && longitude !== null && category !== "" && title.trim().length >= 3;
 
@@ -35,6 +39,11 @@ function SimilarNearby({ latitude, longitude, category, title, description }: Pr
             controller.abort();
         };
     }, [ready, latitude, longitude, category, title, description]);
+
+    const key = found.map((r) => r.id).join(",");
+    useEffect(() => {
+        onMatches(key);
+    }, [key, onMatches]);
 
     if (found.length === 0) return null;
 
@@ -63,6 +72,10 @@ function SimilarNearby({ latitude, longitude, category, title, description }: Pr
                     <MeToo reportId={r.id} count={r.affected_count} open />
                 </div>
             ))}
+            <label className={styles.confirm}>
+                <input type="checkbox" checked={confirmed} onChange={(e) => onConfirm(e.target.checked)} />
+                <span>I have checked, and my problem is different from the {found.length === 1 ? "one" : "ones"} above. I want to file a new complaint.</span>
+            </label>
         </section>
     );
 }
