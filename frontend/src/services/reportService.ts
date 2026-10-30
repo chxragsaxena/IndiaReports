@@ -164,6 +164,8 @@ export interface SimilarReport {
     status: string;
     distance_m: number;
     affected_count: number;
+    latitude: number;
+    longitude: number;
     created_at: string | null;
 }
 

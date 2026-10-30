@@ -58,6 +58,7 @@ async def test_a_report_right_here_with_the_same_wording_is_found(client):
     found = await similar(client, metres_north=20, title="Pothole near market gate")
     assert [f["id"] for f in found] == [report_id]
     assert found[0]["distance_m"] <= 25 and found[0]["affected_count"] == 1
+    assert found[0]["latitude"] and found[0]["longitude"]  # lets the person open it on the map to check
 
 
 async def test_only_close_open_reports_of_the_same_kind_are_found(client):

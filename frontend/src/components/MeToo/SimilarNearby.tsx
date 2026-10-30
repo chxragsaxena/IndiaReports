@@ -40,9 +40,11 @@ function SimilarNearby({ latitude, longitude, category, title, description }: Pr
 
     return (
         <section className={styles.notice} aria-live="polite">
-            <h3>This may already be reported nearby</h3>
-            <p className={styles.muted}>
-                If it is the same problem, add yourself instead of filing a copy. It counts towards how many people are affected.
+            <h3>This problem may already be on the map</h3>
+            <p>
+                It is highly likely that this problem already exists on the map. If this is the case, please check it and press{" "}
+                <strong>Me too</strong> instead of registering a new complaint. Your Me too counts towards how many people are affected, and you
+                will be emailed when it is fixed.
             </p>
             {found.map((r) => (
                 <div key={r.id} className={styles.card}>
@@ -50,6 +52,14 @@ function SimilarNearby({ latitude, longitude, category, title, description }: Pr
                     <span className={styles.muted}>
                         <Tag>{r.category}</Tag> about {r.distance_m} m away
                     </span>
+                    <a
+                        className={styles.checkLink}
+                        href={`/?report=${r.id}&lat=${r.latitude}&lng=${r.longitude}&z=16`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        Check it on the map (opens in a new tab)
+                    </a>
                     <MeToo reportId={r.id} count={r.affected_count} open />
                 </div>
             ))}

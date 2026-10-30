@@ -38,6 +38,8 @@ class SimilarReport(BaseModel):
     status: ReportStatus
     distance_m: int
     affected_count: int
+    latitude: float
+    longitude: float
     created_at: datetime | None = None
 
 

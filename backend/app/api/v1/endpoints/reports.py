@@ -166,7 +166,8 @@ async def similar_reports(
     return [
         SimilarReport(
             id=m.report.id, title=m.report.title, category=m.report.category, status=m.report.status,
-            distance_m=round(m.distance_m), affected_count=m.report.affected_count, created_at=m.report.created_at,
+            distance_m=round(m.distance_m), affected_count=m.report.affected_count, latitude=m.report.latitude,
+            longitude=m.report.longitude, created_at=m.report.created_at,
         )
         for m in found
     ]
