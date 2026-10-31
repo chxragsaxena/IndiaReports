@@ -52,13 +52,6 @@ services:
         sync: false
       - key: EMAIL_FROM
         value: IndiaReports <onboarding@resend.dev>
-      # WhatsApp reporting (optional): see the README, "WhatsApp reporting"
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: WHATSAPP_WEBHOOK_URL # https://<this service's address>/api/v1/whatsapp/webhook
-        value: https://indiareports.onrender.com/api/v1/whatsapp/webhook
       # Photos and voice notes: S3-compatible storage. Cloudflare R2 is the suggested one (free tier).
       # Leave these empty and uploads simply answer 503 "not available".
       - key: S3_ENDPOINT_URL # https://<account id>.r2.cloudflarestorage.com

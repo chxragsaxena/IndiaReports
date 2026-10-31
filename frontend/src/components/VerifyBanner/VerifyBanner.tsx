@@ -5,7 +5,7 @@ import { currentUser, resendVerification } from "../../services/authService";
 import { useToast } from "../UI/Toast/Toast";
 import styles from "./VerifyBanner.module.css";
 
-/** Asks a signed-in citizen to confirm their email, because report emails only go to confirmed addresses. */
+/** Asks a signed-in citizen to confirm their email address. Emails about their reports are sent either way. */
 function VerifyBanner() {
     const { user } = useAuth();
     const toast = useToast();
@@ -44,7 +44,7 @@ function VerifyBanner() {
     return (
         <div className={styles.banner} role="status">
             <span>
-                Confirm your email ({user.email}) to be told when your reports are resolved.
+                Please confirm your email address ({user.email}).
             </span>
             <button type="button" className={styles.link} onClick={() => void resend()} disabled={sending}>
                 {sending ? "Sending..." : "Send the link again"}

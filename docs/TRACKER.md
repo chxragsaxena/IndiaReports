@@ -30,7 +30,6 @@ Legend: [x] done, [~] in progress, [ ] todo
 | 12 | Voice reports: record in the browser, Whisper transcript in ai-service, staff play and read it | [x] |
 | 13 | Account recovery: password reset, email verification, officer deactivation | [x] |
 | 14 | Installable PWA and a Render Blueprint (render.yaml) | [x] |
-| 15 | WhatsApp reporting through Twilio (text, location, voice notes) | [x] |
 
 ## Log
 - Stage 1 started: cloned repo to working folder, created `microservices` branch.

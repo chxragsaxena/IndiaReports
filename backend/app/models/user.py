@@ -21,8 +21,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="citizen")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    # Set when the person clicks the link emailed to this address (or when the main administrator
-    # created the account). Email about a report is only sent to verified addresses.
+    # Set when the person clicks the link emailed to this address (or when the main administrator created the
+    # account). Informational: emails about a report are sent to the account's address either way.
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Sign-in tokens issued before this moment are refused, so a password reset signs everyone out.
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

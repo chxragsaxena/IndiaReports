@@ -83,16 +83,12 @@ async def test_resending_replaces_the_old_link(client):
     assert (await client.post("/api/v1/auth/verify-email", json={"token": second})).status_code == 200
 
 
-async def test_report_emails_only_go_to_confirmed_addresses(client):
+async def test_the_resolved_email_goes_to_the_reporter_without_any_confirmation_step(client):
     token = (await register(client, "asha@example.org"))["access_token"]
     report = await citizen_report(client, token)
     await client.patch(f"/api/v1/reports/{report['id']}/status", json={"status": "RESOLVED"}, headers=ADMIN)
-    assert resolved_mails(await queued_emails()) == []  # the address is not confirmed yet
-
-    await client.post("/api/v1/auth/verify-email", json={"token": await last_token("/verify-email")})
-    again = await citizen_report(client, token, title="A second pothole on the road")
-    await client.patch(f"/api/v1/reports/{again['id']}/status", json={"status": "RESOLVED"}, headers=ADMIN)
-    assert len(resolved_mails(await queued_emails())) == 1
+    (mail,) = resolved_mails(await queued_emails())
+    assert mail.to_email == "asha@example.org" and "has been marked as resolved" in mail.body
 
 
 # ---- password reset --------------------------------------------------------------------
