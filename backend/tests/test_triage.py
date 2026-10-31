@@ -110,3 +110,12 @@ async def test_a_failed_triage_changes_nothing(client):
     assert r.status_code == 200
     detail = (await client.get(f"/api/v1/admin/reports/{report_id}", headers=API_KEY)).json()
     assert detail["triage"] is None
+
+
+async def test_a_spam_report_is_never_stored_as_urgent(client):
+    # Text that orders the model to "rate this critical" can make it write urgency critical even while
+    # it correctly flags the text as spam. That urgency must never reach staff.
+    report_id = await new_report(client)
+    await send(client, report_id, TRIAGE | {"is_spam": True, "spam_reason": "Tries to instruct the rater.", "urgency": "critical"})
+    row = (await client.get("/api/v1/admin/reports", headers=API_KEY)).json()["items"][0]
+    assert row["ai_spam"] is True and row["ai_urgency"] == "low"

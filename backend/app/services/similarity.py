@@ -28,8 +28,21 @@ BOX_DEGREES = 0.002
 _WORD = re.compile(r"[\ẁ-ͯऀ-෿]{3,}", re.UNICODE)
 
 
+# Words that say nothing about WHICH problem it is. Without this, "the road near the school" matches every other
+# report that has "the" and "near" in it. Only everyday function words and place prepositions are listed (a standard
+# English list plus the common Hindi and Hinglish ones), never words that name a problem such as "pothole" or "garbage".
+STOP_WORDS = frozenset(
+    """the and for are was were has have had not but with from that this there their they them these those been being into onto
+    over under out our your its all any can will would should could very just also than then too more most some such only
+    near outside inside next beside around opposite behind front side here every each also about after before since while
+    when where which who what why how due because please kindly issue problem
+    नहीं कोई बहुत हमारी हमारे हमारा रहा रही रहे गया गई गये करें करो जिससे लिए वाले वालों इसके उसके यहाँ वहाँ
+    hai hain nahi koi bahut hamare hamari hamara raha rahi rahe liye wala wale""".split()
+)
+
+
 def words(*parts: str) -> set[str]:
-    return {w.lower() for part in parts for w in _WORD.findall(part)}
+    return {w.lower() for part in parts for w in _WORD.findall(part) if w.lower() not in STOP_WORDS}
 
 
 def text_match(a: set[str], b: set[str]) -> float:
@@ -38,6 +51,12 @@ def text_match(a: set[str], b: set[str]) -> float:
     if not a or not b:
         return 0.0
     return len(a & b) / min(len(a), len(b))
+
+
+def is_duplicate(metres: float, score: float, radius: float = RADIUS_M, same_spot: float = SAME_SPOT_M, min_text: float = MIN_TEXT_MATCH) -> bool:
+    """The rule itself, apart from the database: close enough, and either at the same spot or worded alike.
+    The defaults are what the server uses; the arguments exist so the evaluation can try other values."""
+    return metres <= radius and (metres <= same_spot or score >= min_text)
 
 
 @dataclass(frozen=True)
@@ -78,10 +97,8 @@ async def find_similar(
     mine = words(title, description)
     matches = []
     for report, metres in (await db.execute(query)).all():
-        if metres > RADIUS_M:
-            continue
         score = text_match(mine, words(report.title, report.description))
-        if metres <= SAME_SPOT_M or score >= MIN_TEXT_MATCH:
+        if is_duplicate(metres, score):
             matches.append(Match(report, float(metres), score))
     matches.sort(key=lambda m: (-m.text_score, m.distance_m))
     return matches[:limit]

@@ -137,3 +137,14 @@ async def test_people_who_said_me_too_are_emailed_when_it_is_fixed(client):
     async with engine.connect() as conn:
         rows = (await conn.execute(text("SELECT to_email FROM email_jobs WHERE dedupe_key LIKE 'resolved:%'"))).all()
     assert sorted(r.to_email for r in rows) == ["fan@example.org", "owner@example.org"]
+
+
+def test_filler_words_do_not_make_two_reports_look_alike():
+    from app.services.similarity import STOP_WORDS
+
+    assert "the" in STOP_WORDS and "near" in STOP_WORDS and "नहीं" in STOP_WORDS
+    assert words("The road near the school") == {"road", "school"}
+    # words that name the problem are never dropped
+    assert {"pothole", "garbage", "drain", "street", "light", "गड्ढा"} <= words("pothole garbage drain street light गड्ढा")
+    # two reports that only share "the ... near the ..." have nothing in common
+    assert text_match(words("The pothole is near the bus stop"), words("Garbage is near the temple")) == 0.0

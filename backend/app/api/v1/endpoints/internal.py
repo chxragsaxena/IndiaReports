@@ -221,6 +221,10 @@ def _clean_triage(raw: dict) -> dict | None:
         confidence = min(1.0, max(0.0, float(raw.get("confidence", 0))))
     except (TypeError, ValueError):
         confidence = 0.0
+    # A report the model calls spam is not urgent, whatever urgency it wrote. In the evaluation, text that tried to
+    # order the model to "rate this critical" was correctly flagged as spam but still came back with urgency critical.
+    if bool(raw.get("is_spam", False)):
+        urgency = "low"
     return {
         "language": _bounded(raw.get("language", "English"), 40) or "English",
         "title_en": _bounded(raw.get("title_en", ""), 200),
