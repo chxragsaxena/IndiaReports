@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import Button from "../UI/Button/Button";
-import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS, clock, pickMimeType, voiceSupported } from "../../utils/voice";
+import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS, VOICE_LANGUAGES, clock, pickMimeType, voiceSupported } from "../../utils/voice";
 import styles from "./VoiceRecorder.module.css";
 
 export interface Recording {
     blob: Blob;
     seconds: number;
+    /** Language code the speaker chose, or "" to detect it. */
+    language: string;
 }
 
 interface Props {
@@ -19,6 +21,9 @@ interface Props {
 function VoiceRecorder({ value, onChange, onProblem }: Props) {
     const [recording, setRecording] = useState(false);
     const [elapsed, setElapsed] = useState(0);
+    const [language, setLanguage] = useState(""); // detect; the server reads a guessed "Urdu" as Hindi
+    const languageRef = useRef(language);
+    languageRef.current = language;
     const recorder = useRef<MediaRecorder | null>(null);
     const stream = useRef<MediaStream | null>(null);
     const timer = useRef<number | undefined>(undefined);
@@ -57,7 +62,7 @@ function VoiceRecorder({ value, onChange, onProblem }: Props) {
             } else if (blob.size === 0 || seconds < 1) {
                 onProblem("Nothing was recorded. Please try again.");
             } else {
-                onChange({ blob, seconds });
+                onChange({ blob, seconds, language: languageRef.current });
             }
         };
         recorder.current = rec;
@@ -103,9 +108,21 @@ function VoiceRecorder({ value, onChange, onProblem }: Props) {
                     </Button>
                 </>
             ) : (
-                <Button variant="secondary" size="sm" onClick={() => void start()}>
-                    Record a voice note
-                </Button>
+                <>
+                    <Button variant="secondary" size="sm" onClick={() => void start()}>
+                        Record a voice note
+                    </Button>
+                    <label className={styles.language}>
+                        I will speak in
+                        <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                            {VOICE_LANGUAGES.map((l) => (
+                                <option key={l.code} value={l.code}>
+                                    {l.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </>
             )}
         </div>
     );

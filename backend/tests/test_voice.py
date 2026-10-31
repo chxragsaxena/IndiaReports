@@ -95,7 +95,7 @@ async def test_the_owner_can_attach_a_voice_note_and_the_ai_service_is_told(clie
 async def test_the_event_does_not_carry_the_report_text_or_the_audio(client, photo_store):
     await spoken_report(client)
     (sent,) = await events("VoiceNoteUploaded")
-    assert set(sent) == {"voice_id", "report_id", "storage_key", "content_type", "size_bytes"}
+    assert set(sent) == {"voice_id", "report_id", "storage_key", "content_type", "size_bytes", "language"}
 
 
 async def test_a_voice_note_needs_sign_in_and_ownership(client, photo_store):
@@ -133,6 +133,30 @@ async def test_voice_notes_are_off_when_storage_is_not_configured(client, monkey
     use_store(None)
     monkeypatch.setattr(settings, "S3_ENDPOINT_URL", None)
     assert (await speak(client, report_id, token)).status_code == 503
+
+
+async def test_the_chosen_language_travels_with_the_event(client, photo_store):
+    token = await citizen(client)
+    report_id = await report_by(client, token)
+    response = await client.post(
+        f"/api/v1/reports/{report_id}/voice", files={"file": ("v.webm", WEBM, "audio/webm")},
+        data={"language": " HI "}, headers=bearer(token),
+    )
+    assert response.status_code == 201
+    (sent,) = await events("VoiceNoteUploaded")
+    assert sent["language"] == "hi"
+
+
+async def test_no_language_means_detect_and_an_unknown_one_is_refused(client, photo_store):
+    token, _ = await spoken_report(client)
+    (sent,) = await events("VoiceNoteUploaded")
+    assert sent["language"] is None
+    other = await report_by(client, token, title="Another pothole on the road")
+    response = await client.post(
+        f"/api/v1/reports/{other}/voice", files={"file": ("v.webm", WEBM, "audio/webm")},
+        data={"language": "klingon"}, headers=bearer(token),
+    )
+    assert response.status_code == 422
 
 
 # ---- the transcript comes back -------------------------------------------------------------

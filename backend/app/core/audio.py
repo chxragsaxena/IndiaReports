@@ -13,6 +13,11 @@ from dataclasses import dataclass
 VOICE_PLACEHOLDER = "Voice report. The spoken description is being transcribed."
 
 
+# Languages a speaker can name (Whisper's codes). Naming one stops the model guessing: it often
+# writes Hindi speech in Urdu script, because the two sound almost the same.
+VOICE_LANGUAGES = {"hi", "en", "bn", "ta", "te", "mr", "gu", "kn", "ml", "pa", "ur", "ne", "as"}
+
+
 class AudioRejected(Exception):
     """The file is not a voice note we accept."""
 

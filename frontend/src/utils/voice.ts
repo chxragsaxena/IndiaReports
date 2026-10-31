@@ -5,6 +5,24 @@ export const VOICE_PLACEHOLDER = "Voice report. The spoken description is being 
 export const MAX_VOICE_SECONDS = 60;
 export const MAX_VOICE_BYTES = 3 * 1024 * 1024;
 
+/** Languages a speaker can name. "" lets the model guess, which can write Hindi in Urdu script. */
+export const VOICE_LANGUAGES: { code: string; label: string }[] = [
+    { code: "", label: "Detect automatically" },
+    { code: "hi", label: "Hindi" },
+    { code: "en", label: "English" },
+    { code: "bn", label: "Bengali" },
+    { code: "ta", label: "Tamil" },
+    { code: "te", label: "Telugu" },
+    { code: "mr", label: "Marathi" },
+    { code: "gu", label: "Gujarati" },
+    { code: "kn", label: "Kannada" },
+    { code: "ml", label: "Malayalam" },
+    { code: "pa", label: "Punjabi" },
+    { code: "ur", label: "Urdu" },
+    { code: "ne", label: "Nepali" },
+    { code: "as", label: "Assamese" },
+];
+
 // Browsers record different containers: Chrome and Edge webm, Firefox webm or ogg, Safari mp4.
 const CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
 

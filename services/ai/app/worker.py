@@ -122,7 +122,9 @@ async def handle(
                 "provider": verifier.provider, "model": verifier.model, "attempts": attempts,
             }
         elif kind == VOICE_EVENT:
-            heard = await transcriber.transcribe(await store.get(data["storage_key"]), data.get("content_type", "audio/webm"))
+            heard = await transcriber.transcribe(
+                await store.get(data["storage_key"]), data.get("content_type", "audio/webm"), data.get("language") or None
+            )
             body = {
                 "status": "done", "transcript": heard.text, "language": heard.language,
                 "provider": transcriber.provider, "model": transcriber.model, "attempts": attempts,

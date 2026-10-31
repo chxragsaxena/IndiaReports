@@ -196,10 +196,11 @@ export class PhotosUnavailableError extends Error {}
 export class VoiceUnavailableError extends Error {}
 
 /** Attach the spoken description to a report you filed. The server transcribes it afterwards. */
-export async function uploadVoiceNote(reportId: string, recording: Blob, seconds: number): Promise<void> {
+export async function uploadVoiceNote(reportId: string, recording: Blob, seconds: number, language = ""): Promise<void> {
     const form = new FormData();
     form.append("file", recording, "voice");
     form.append("duration_seconds", String(Math.round(seconds)));
+    if (language) form.append("language", language);
     try {
         await api.post(`/reports/${encodeURIComponent(reportId)}/voice`, form, { timeout: 60000 });
     } catch (err) {

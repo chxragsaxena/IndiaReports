@@ -81,14 +81,17 @@ class WhisperTranscriber:
             timeout=httpx.Timeout(settings.ANALYSIS_TIMEOUT_SECONDS, connect=10.0),
         )
 
-    async def _post(self, audio: bytes, content_type: str) -> httpx.Response:
+    async def _post(self, audio: bytes, content_type: str, language: str | None = None) -> httpx.Response:
         extension = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/wav": "wav", "audio/mpeg": "mp3"}.get(content_type, "webm")
+        form = {"model": self.model, "response_format": "verbose_json", "temperature": "0", "prompt": HINT}
+        if language:
+            form["language"] = language  # stops the model guessing the language
         for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             try:
                 response = await self._client.post(
                     "/audio/transcriptions",
                     files={"file": (f"voice.{extension}", audio, content_type)},
-                    data={"model": self.model, "response_format": "verbose_json", "temperature": "0", "prompt": HINT},
+                    data=form,
                 )
             except (httpx.TimeoutException, httpx.TransportError):
                 raise AnalysisError("The speech model server was unreachable or too slow; will retry.", retryable=True)
@@ -101,8 +104,17 @@ class WhisperTranscriber:
             await self._sleep(wait)
         raise AnalysisError("rate limited", retryable=True)  # pragma: no cover
 
-    async def transcribe(self, audio: bytes, content_type: str) -> Transcript:
-        response = await self._post(audio, content_type)
+    async def transcribe(self, audio: bytes, content_type: str, language: str | None = None) -> Transcript:
+        result = await self._transcribe_once(audio, content_type, language)
+        if language is None and result.language == "Urdu":
+            # Hindi and Urdu sound almost the same, and the model often calls Hindi "Urdu" and writes it in
+            # Arabic script, which most officers cannot read. Nobody named a language, so read it as Hindi.
+            logger.info("detected Urdu with no language chosen; transcribing again as Hindi")
+            return await self._transcribe_once(audio, content_type, "hi")
+        return result
+
+    async def _transcribe_once(self, audio: bytes, content_type: str, language: str | None) -> Transcript:
+        response = await self._post(audio, content_type, language)
         error_type, error_message = _api_error(response)
         detail = f": {error_type} {error_message}".rstrip()[:240] if (error_type or error_message) else ""
         if response.status_code in (400, 401, 403, 404, 413, 422):
@@ -122,7 +134,7 @@ class MockTranscriber:
     provider = "mock"
     model = "mock"
 
-    async def transcribe(self, audio: bytes, content_type: str) -> Transcript:
+    async def transcribe(self, audio: bytes, content_type: str, language: str | None = None) -> Transcript:
         return Transcript(text="DEMO TRANSCRIPT (no speech model configured): a problem needs attention here.", language="English")
 
 

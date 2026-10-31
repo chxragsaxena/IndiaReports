@@ -300,9 +300,9 @@ class FakeTranscriber:
     def __init__(self, error=None):
         self.error, self.calls, self.heard = error, 0, []
 
-    async def transcribe(self, audio, content_type):
+    async def transcribe(self, audio, content_type, language=None):
         self.calls += 1
-        self.heard.append((audio, content_type))
+        self.heard.append((audio, content_type, language))
         if self.error:
             raise self.error
         from app.analysis.transcriber import Transcript
@@ -327,7 +327,7 @@ async def test_a_voice_note_is_transcribed_and_the_text_sent(redis):
     (voice_id, body), = reporter.sent
     assert voice_id == VOICE and body["status"] == "done" and body["transcript"] == "Sadak par gaddha hai."
     assert body["language"] == "Hindi" and body["provider"] == "fake" and body["model"] == "fake-whisper"
-    assert transcriber.heard == [(b"jpeg-bytes", "audio/webm")]  # the stored file, with its content type
+    assert transcriber.heard == [(b"jpeg-bytes", "audio/webm", None)]  # the stored file, its content type, no language chosen
     assert await pending(redis) == 0
 
 

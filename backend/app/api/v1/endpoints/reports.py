@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.audio import AudioRejected, clamp_duration, sniff
+from app.core.audio import VOICE_LANGUAGES, AudioRejected, clamp_duration, sniff
 from app.core.auth import current_user_optional, require_user
 from app.core.images import ImageRejected, TooLarge, process_image, read_limited
 from app.core.storage import get_store
@@ -333,6 +333,7 @@ async def upload_voice_note(
     report_id: UUID,
     file: UploadFile = File(...),
     duration_seconds: Optional[int] = Form(default=None),
+    language: Optional[str] = Form(default=None),
     user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -346,6 +347,10 @@ async def upload_voice_note(
     report = await db.get(Report, report_id)
     if report is None or (report.reporter_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Report not found.")
+
+    language = (language or "").strip().lower() or None
+    if language is not None and language not in VOICE_LANGUAGES:
+        raise HTTPException(status_code=422, detail="That language is not supported for voice notes.")
 
     try:
         raw = await read_limited(file, settings.MAX_VOICE_BYTES, what="recording")
@@ -374,7 +379,7 @@ async def upload_voice_note(
     )
     add_event(db, "VoiceNoteUploaded", {
         "voice_id": str(note_id), "report_id": str(report_id), "storage_key": key,
-        "content_type": kind.content_type, "size_bytes": len(raw),
+        "content_type": kind.content_type, "size_bytes": len(raw), "language": language,
     })
     await db.commit()
     return VoiceUploadResponse(id=note_id)

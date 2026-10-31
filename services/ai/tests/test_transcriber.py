@@ -92,3 +92,50 @@ async def test_server_errors_and_unreadable_answers_are_retried():
 async def test_the_mock_is_labelled_as_a_demo():
     result = await MockTranscriber().transcribe(b"a", "audio/webm")
     assert "DEMO" in result.text
+
+
+async def test_a_chosen_language_is_sent_so_the_model_does_not_guess():
+    bodies = []
+
+    def handler(request):
+        bodies.append(request.content)
+        return answer(text="sadak par gaddha hai", language="hindi")
+
+    await server(handler).transcribe(b"a", "audio/webm", "hi")
+    assert len(bodies) == 1 and b'name="language"' in bodies[0]
+
+
+async def test_no_language_is_sent_when_none_was_chosen():
+    bodies = []
+
+    def handler(request):
+        bodies.append(request.content)
+        return answer(text="hello", language="english")
+
+    await server(handler).transcribe(b"a", "audio/webm")
+    assert b'name="language"' not in bodies[0]
+
+
+async def test_urdu_with_no_language_chosen_is_read_again_as_hindi():
+    bodies = []
+
+    def handler(request):
+        bodies.append(request.content)
+        if len(bodies) == 1:
+            return answer(text="سڑک پر گٹھا ہے", language="urdu")
+        return answer(text="सड़क पर गड्ढा है", language="hindi")
+
+    result = await server(handler).transcribe(b"a", "audio/webm")
+    assert len(bodies) == 2 and b'name="language"' not in bodies[0] and b"hi" in bodies[1].split(b'name="language"')[1][:20]
+    assert result.language == "Hindi" and result.text.startswith("सड़")
+
+
+async def test_urdu_that_the_speaker_chose_is_left_alone():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return answer(text="گٹھا", language="urdu")
+
+    result = await server(handler).transcribe(b"a", "audio/webm", "ur")
+    assert len(calls) == 1 and result.language == "Urdu"

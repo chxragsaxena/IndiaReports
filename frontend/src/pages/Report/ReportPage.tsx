@@ -194,7 +194,7 @@ function ReportPage() {
             if (voice) {
                 setUploadNote("Uploading your voice note...");
                 try {
-                    await uploadVoiceNote(report.id, voice.blob, voice.seconds);
+                    await uploadVoiceNote(report.id, voice.blob, voice.seconds, voice.language);
                     sentVoice = true;
                 } catch (err) {
                     toast.show(
