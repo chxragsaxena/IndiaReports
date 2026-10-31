@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext";
+import InstallButton from "../InstallButton/InstallButton";
 import { isStaff } from "../../services/session";
 import styles from "./Navbar.module.css";
 
@@ -50,6 +51,8 @@ function Navbar() {
                     </NavLink>
                 )}
             </nav>
+
+            <InstallButton />
 
             {user ? (
                 <div className={styles.account}>

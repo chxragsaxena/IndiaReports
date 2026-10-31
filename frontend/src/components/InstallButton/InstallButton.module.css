@@ -1,0 +1,15 @@
+.install {
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    background: transparent;
+    color: #fff;
+    border-radius: var(--radius-sm);
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.install:hover {
+    background: rgba(255, 255, 255, 0.12);
+}

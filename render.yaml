@@ -1,0 +1,147 @@
+# Render Blueprint: every IndiaReports service from this repo. Render dashboard > New > Blueprint > pick this repo.
+#
+# READ THIS FIRST
+#  * The database is NOT here. It stays on Neon (free, no expiry). Fill in the URLs below when Render asks.
+#  * If you already created the report-service by hand (https://indiareports.onrender.com), delete the first block
+#    ("indiareports") before applying, otherwise the names clash. Then add the missing variables to that service by hand.
+#  * Free web services sleep after 15 minutes without traffic, and one workspace only gets ~750 free instance-hours a month,
+#    so at most ONE of these can be awake all month. The user-facing API tolerates sleeping (the first visit is slow). The
+#    background workers (ai-service, notifier, analytics) do not: they read the Redis stream, and only while they are awake.
+#    For a real demo, change those three to `plan: starter` (about $7 a month each) or ping /health every 5 minutes.
+#  * Redis (Render "Key Value") is the event bus. maxmemoryPolicy MUST stay noeviction, or Redis may delete stream entries.
+#    The free Key Value instance does not keep data across restarts, so events in flight when it restarts are lost; the
+#    outbox rows stay in Postgres, so reports themselves are never lost.
+
+services:
+  # ---- the API: reports, accounts, photos and voice notes, staff queue --------------------------------------------
+  - type: web
+    name: indiareports
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # The same start command the live service uses: it migrates a new database, upgrades a tracked one, and stamps an
+    # old untracked one first, so it is safe on every deploy.
+    dockerCommand: sh -c "python -m scripts.migrate && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers ${WEB_CONCURRENCY:-2}"
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL # postgresql+asyncpg://USER:PASSWORD@HOST/neondb?ssl=require  (the DIRECT Neon host, not -pooler)
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: indiareports-redis
+          property: connectionString
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: INTERNAL_API_KEY # the shared secret the ai-service uses to post results back
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: CORS_ORIGINS # your Vercel site
+        value: https://india-reports-kappa.vercel.app
+      - key: PUBLIC_APP_URL # used in the links inside emails
+        value: https://india-reports-kappa.vercel.app
+      # Email (resend.com): without a key no email is sent and nothing else changes
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: IndiaReports <onboarding@resend.dev>
+      # Photos and voice notes: S3-compatible storage. Cloudflare R2 is the suggested one (free tier).
+      # Leave these empty and uploads simply answer 503 "not available".
+      - key: S3_ENDPOINT_URL # https://<account id>.r2.cloudflarestorage.com
+        sync: false
+      - key: S3_BUCKET
+        value: indiareports-photos
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
+
+  # ---- AI: photo analysis, text triage, repair checks, voice transcription (open-weight models on Groq) -------------
+  - type: web
+    name: indiareports-ai
+    runtime: docker
+    dockerfilePath: ./services/ai/Dockerfile
+    dockerContext: ./services/ai
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: indiareports-redis
+          property: connectionString
+      - key: REPORT_SERVICE_URL # the API's public address
+        value: https://indiareports.onrender.com
+      - key: INTERNAL_API_KEY
+        fromService:
+          type: web
+          name: indiareports
+          envVarKey: INTERNAL_API_KEY
+      - key: GROQ_API_KEY # free key: console.groq.com/keys
+        sync: false
+      # Must be the same storage as the API, so the AI can read what citizens upload.
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_BUCKET
+        value: indiareports-photos
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
+
+  # ---- live map updates and alerts (Go, WebSocket + Telegram) ------------------------------------------------------
+  - type: web
+    name: indiareports-notifier
+    runtime: docker
+    dockerfilePath: ./services/notifier/Dockerfile
+    dockerContext: ./services/notifier
+    plan: free
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL # postgres://USER:PASSWORD@HOST/notifier_db?sslmode=require  (create this database in Neon first)
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: indiareports-redis
+          property: connectionString
+      - key: TELEGRAM_BOT_TOKEN # optional
+        sync: false
+
+  # ---- hotspots and SLA numbers (Go) -----------------------------------------------------------------------------
+  - type: web
+    name: indiareports-analytics
+    runtime: docker
+    dockerfilePath: ./services/analytics/Dockerfile
+    dockerContext: ./services/analytics
+    plan: free
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL # postgres://USER:PASSWORD@HOST/analytics_db?sslmode=require  (create this database in Neon first)
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: indiareports-redis
+          property: connectionString
+
+  # ---- Redis: the event stream that connects the services ---------------------------------------------------------
+  - type: keyvalue
+    name: indiareports-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: [] # reachable only from the services above

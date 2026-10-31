@@ -45,7 +45,12 @@ Seeding twice does not reset analytics; use `docker compose down -v` for a clean
 ## Deploying (Render + Vercel)
 - Make the Render Start Command `python -m scripts.migrate && uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The script migrates a new database,
   upgrades a tracked one, and stamps an old untracked one before upgrading, so it is safe on every deploy.
-- One Render web service per backend service, plus a Render Key Value (Redis) instance. Free tiers sleep, so the first request after idle is slow.
+- **One-step setup:** `render.yaml` in the repo root describes every service (API, ai-service, notifier, analytics) and the Redis instance. In Render choose
+  New > Blueprint, pick this repo, and fill in the prompted values (the Neon URLs, a Groq key, storage and email keys). The header of that file lists what each
+  needs and its limits: the database stays on Neon, free services sleep (and one workspace only gets about 750 free hours a month), and the Redis instance must
+  keep `noeviction`. If the API already exists, delete its block before applying.
+- Create two extra databases next to `neondb` in Neon for the Go services: `notifier_db` and `analytics_db` (Neon console > Databases), and use their direct (not `-pooler`) URLs.
+- Free tiers sleep, so the first request after idle is slow. The background workers only run while awake: for a real demo give the ai-service and notifier a paid plan.
 - Set `ADMIN_API_KEY` (and ideally a separate `ACK_SECRET`) to long random values.
 - `frontend/vercel.json` rewrites client routes so deep links such as `/ack?...` work.
 
