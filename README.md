@@ -84,6 +84,10 @@ Officers sign in on the **Administrator** tab and see only their own area's queu
 ## Email
 Citizens are emailed when their report is resolved; officers when a report arrives in their area or is reopened; the administrator on escalation.
 Set `PUBLIC_APP_URL` (your Vercel address) so the emails link back to the site, then choose a provider:
+- **Gmail API (recommended):** `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` and `GMAIL_SENDER`. Sends from your own Gmail to anyone, over HTTPS, so Render's
+  free tier allows it and no domain is needed. They are the same four values a Nodemailer Gmail OAuth2 setup uses (`CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`, `EMAIL_USER`).
+  The refresh token needs the Gmail send permission (`https://mail.google.com/` or `gmail.send`). Google revokes refresh tokens of apps left in "Testing" after 7 days;
+  publish the OAuth app ("In production") for tokens that last. A Gmail account can send roughly 500 emails a day.
 - `RESEND_API_KEY` (and `EMAIL_FROM`): HTTPS API from resend.com. **Use this on Render's free tier, which blocks SMTP.** Until you verify a domain, Resend only
   delivers to your own account's address, which is enough for a demo.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`: any SMTP server (not on Render free).

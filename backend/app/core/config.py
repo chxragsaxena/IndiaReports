@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     EMAIL_PROVIDER: str = ""
     EMAIL_FROM: str = "IndiaReports <onboarding@resend.dev>"
     RESEND_API_KEY: str | None = None
+    # Gmail API (HTTPS, so it works where SMTP is blocked, and sends from your own Gmail to anyone, no domain needed).
+    # Needs a Google OAuth client and a refresh token that was granted the gmail.send permission.
+    GMAIL_CLIENT_ID: str | None = None
+    GMAIL_CLIENT_SECRET: str | None = None
+    GMAIL_REFRESH_TOKEN: str | None = None
+    GMAIL_SENDER: str | None = None  # the Gmail address the refresh token belongs to
     SMTP_HOST: str | None = None
     SMTP_PORT: int = 587
     SMTP_USERNAME: str | None = None

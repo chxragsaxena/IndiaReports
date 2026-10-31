@@ -45,9 +45,17 @@ services:
         value: https://india-reports-kappa.vercel.app
       - key: PUBLIC_APP_URL # used in the links inside emails
         value: https://india-reports-kappa.vercel.app
-      # Email (resend.com): without a key no email is sent and nothing else changes
-      - key: EMAIL_PROVIDER
-        value: resend
+      # Email. With the four GMAIL_* values the Gmail API is used (sends from your Gmail to anyone, no domain needed).
+      # Otherwise RESEND_API_KEY, otherwise nothing is sent and nothing else changes. EMAIL_PROVIDER is left unset on purpose:
+      # setting it would override this automatic choice.
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: GMAIL_SENDER # the Gmail address the refresh token belongs to
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM

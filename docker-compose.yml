@@ -51,6 +51,11 @@ services:
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-log}
       EMAIL_FROM: ${EMAIL_FROM:-IndiaReports <onboarding@resend.dev>}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # Gmail API (sends from your Gmail to anyone): same values as a Nodemailer Gmail OAuth2 setup
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+      GMAIL_REFRESH_TOKEN: ${GMAIL_REFRESH_TOKEN:-}
+      GMAIL_SENDER: ${GMAIL_SENDER:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
