@@ -6,6 +6,7 @@ import type { Feature, FeatureCollection, Point } from "geojson";
 import styles from "./IndiaMap.module.css";
 import { MAP_STYLE } from "../../config/api";
 import { getClusters, getPins } from "../../services/reportService";
+import type { Cluster } from "../../services/reportService";
 import { EMPTY_COLLECTION, reportToFeature, toCollection } from "../../utils/geojson";
 import type { PinFeature } from "../../utils/geojson";
 import { useLiveSocket } from "../../hooks/useLiveSocket";
@@ -14,6 +15,47 @@ import type { ReportStatus } from "../../types/report";
 
 /** At or above this zoom the map shows individual reports, below it clusters (matches the server and notifier). */
 const PIN_ZOOM = 11;
+
+// The last national (cluster) view this browser saw, so a return visit paints at once instead of waiting for a sleeping server.
+const SAVED_KEY = "indiareports.savedClusters.v1";
+const SAVED_MAX = 12;
+
+function readSavedClusters(key: string): Cluster[] | null {
+    try {
+        const all = JSON.parse(localStorage.getItem(SAVED_KEY) ?? "{}") as Record<string, unknown>;
+        const found = all[key];
+        if (!Array.isArray(found)) return null;
+        const clean = found.filter(
+            (c): c is Cluster => !!c && typeof c.latitude === "number" && typeof c.longitude === "number" && typeof c.count === "number",
+        );
+        return clean.length > 0 ? clean : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveClusters(key: string, data: Cluster[]): void {
+    try {
+        const all = JSON.parse(localStorage.getItem(SAVED_KEY) ?? "{}") as Record<string, Cluster[]>;
+        delete all[key];
+        all[key] = data; // newest last
+        const keys = Object.keys(all);
+        for (const old of keys.slice(0, Math.max(0, keys.length - SAVED_MAX))) delete all[old];
+        localStorage.setItem(SAVED_KEY, JSON.stringify(all));
+    } catch {
+        // Storage full or blocked: not keeping a saved view is fine.
+    }
+}
+
+function clustersToCollection(data: Cluster[]): FeatureCollection<Point, { count: number }> {
+    const features: Feature<Point, { count: number }>[] = data.map((c) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [c.longitude, c.latitude] },
+        properties: { count: c.count },
+    }));
+    return { type: "FeatureCollection", features };
+}
+
 const PULSE_MS = 2500;
 const INDIA_CENTER: [number, number] = [78.9629, 22.5937];
 
@@ -30,7 +72,7 @@ interface IndiaMapProps {
     onSelect: (id: string | null) => void;
     onLiveStatus: (status: LiveStatus) => void;
     /** Whether the reports for this view are loading, loaded, or could not be fetched. */
-    onDataState?: (state: "loading" | "ready" | "error") => void;
+    onDataState?: (state: "loading" | "stale" | "ready" | "error") => void;
     initialView?: MapView;
 }
 
@@ -59,7 +101,7 @@ function IndiaMap({
     // Latest props/state for callbacks that outlive a render (map events, sockets).
     const filtersRef = useRef({ status: statusFilter, category: categoryFilter });
     const onSelectRef = useRef(onSelect);
-    const onDataStateRef = useRef<(s: "loading" | "ready" | "error") => void>(() => undefined);
+    const onDataStateRef = useRef<(s: "loading" | "stale" | "ready" | "error") => void>(() => undefined);
     const retryRef = useRef<number | null>(null);
     const lastKeyRef = useRef("");
     const requestRef = useRef<AbortController | null>(null);
@@ -107,7 +149,21 @@ function IndiaMap({
         requestRef.current?.abort();
         const controller = new AbortController();
         requestRef.current = controller;
-        onDataStateRef.current("loading");
+
+        // The national view is drawn at once from what this browser saw last time, then replaced by the live answer.
+        // A sleeping free-tier server takes up to a minute to reply; people who have been here before should not wait for it.
+        const cacheKey = [Math.floor(zoom), status, category].join("|");
+        let showedSaved = false;
+        if (zoom < PIN_ZOOM) {
+            const saved = readSavedClusters(cacheKey);
+            if (saved) {
+                clusters.setData(clustersToCollection(saved));
+                pinsRef.current.clear();
+                pins.setData(EMPTY_COLLECTION);
+                showedSaved = true;
+            }
+        }
+        onDataStateRef.current(showedSaved ? "stale" : "loading");
         if (retryRef.current) window.clearTimeout(retryRef.current);
 
         const filters = {
@@ -118,12 +174,8 @@ function IndiaMap({
         try {
             if (zoom < PIN_ZOOM) {
                 const data = await getClusters({ ...view, ...filters, zoom: Math.floor(zoom) }, controller.signal);
-                const features: Feature<Point, { count: number }>[] = data.map((c) => ({
-                    type: "Feature",
-                    geometry: { type: "Point", coordinates: [c.longitude, c.latitude] },
-                    properties: { count: c.count },
-                }));
-                clusters.setData({ type: "FeatureCollection", features });
+                saveClusters(cacheKey, data);
+                clusters.setData(clustersToCollection(data));
                 pinsRef.current.clear();
                 pins.setData(EMPTY_COLLECTION);
             } else {
@@ -138,7 +190,7 @@ function IndiaMap({
                 lastKeyRef.current = ""; // allow a retry on the next move
                 console.error(err);
                 // Say so, and keep trying: a sleeping server usually answers on the next attempt.
-                onDataStateRef.current("error");
+                onDataStateRef.current(showedSaved ? "stale" : "error");
                 if (retryRef.current) window.clearTimeout(retryRef.current);
                 retryRef.current = window.setTimeout(() => void loadViewport(map), 6000);
             }

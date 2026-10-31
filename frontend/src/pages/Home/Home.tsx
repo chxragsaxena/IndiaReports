@@ -54,11 +54,11 @@ function Home() {
     const [panelOpen, setPanelOpen] = useState(false);
     const [alertsOpen, setAlertsOpen] = useState(false);
     const [liveStatus, setLiveStatus] = useState<LiveStatus>("off");
-    const [dataState, setDataState] = useState<"loading" | "ready" | "error">("loading");
+    const [dataState, setDataState] = useState<"loading" | "stale" | "ready" | "error">("loading");
     // Only mention a slow load once it really is slow: quick loads should not flash a message.
     const [slow, setSlow] = useState(false);
     useEffect(() => {
-        if (dataState !== "loading") {
+        if (dataState !== "loading" && dataState !== "stale") {
             setSlow(false);
             return;
         }
@@ -112,11 +112,13 @@ function Home() {
                 initialView={initialView}
             />
 
-            {(dataState === "error" || (dataState === "loading" && slow)) && (
+            {(dataState === "error" || ((dataState === "loading" || dataState === "stale") && slow)) && (
                 <div className={styles.banner} role="status">
                     {dataState === "error"
                         ? "Could not load reports. Trying again..."
-                        : "Loading reports. The server may take up to a minute to wake up."}
+                        : dataState === "stale"
+                          ? "Showing the map as you last saw it. Updating..."
+                          : "Waking up the server. The first visit after a quiet spell can take up to a minute."}
                 </div>
             )}
 
