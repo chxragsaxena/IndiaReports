@@ -90,6 +90,19 @@ Set `PUBLIC_APP_URL` (your Vercel address) so the emails link back to the site, 
 - `EMAIL_PROVIDER=log`: print emails in the server log (the local default).
 With none set, no email is sent and nothing else changes. Failed emails are retried for hours before giving up.
 
+## WhatsApp reporting
+People can report by WhatsApp: send a message or a voice note, then share the location (+ > Location). The report is filed like any other, as an anonymous report,
+and a voice note goes through the same Whisper transcription as one recorded on the site. Replies are written by the server as TwiML, so no outbound WhatsApp
+credentials are needed. The phone number is never stored (only a hash for the 15-minute conversation and a daily counter, 10 reports a day per number).
+Not built: telling the person on WhatsApp when it is fixed (needs Twilio's sender API and a stored number).
+
+To try it free, use Twilio's **WhatsApp sandbox** (Twilio Console > Messaging > Try it out > Send a WhatsApp message): join it from your phone with the code shown, then
+set "When a message comes in" to `https://<your API host>/api/v1/whatsapp/webhook` (HTTP POST). On the API set:
+- `TWILIO_AUTH_TOKEN`: from the Twilio console. Requests are only accepted if their signature matches it.
+- `WHATSAPP_WEBHOOK_URL`: exactly the address above (the signature is computed over it).
+- `TWILIO_ACCOUNT_SID`: optional, only to download voice notes.
+The sandbox is for testing; a public number needs a Twilio WhatsApp sender approved by Meta, which is a paid, reviewed process.
+
 ## Photos and AI analysis
 Citizens can attach up to 3 photos to a report. Photos are private: only the reporter and administrators can see them, through short-lived signed links.
 An open-weight vision model looks at each photo and reports findings to the administrator (what it shows, severity, hazards, whether the category fits,

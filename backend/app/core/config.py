@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     MAX_VOICE_SECONDS: int = 90
     MAX_VOICE_NOTES_PER_REPORT: int = 1
 
+    # ---- WhatsApp reporting (Twilio) ---------------------------------------------------
+    # Set both to turn it on. WHATSAPP_WEBHOOK_URL is the exact public address Twilio posts to
+    # (https://<api host>/api/v1/whatsapp/webhook): the signature check is computed over it.
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_ACCOUNT_SID: str | None = None  # only needed to download voice notes
+    WHATSAPP_WEBHOOK_URL: str = ""
+    WHATSAPP_REPORTS_PER_DAY: int = 10  # per phone number
+    WHATSAPP_GEOCODE: bool = True  # look up the street and city from the shared location
+
     # ---- AI service ---------------------------------------------------------------
     # The ai-service reads uploaded photos from the event stream, analyses them with a vision
     # model and posts the findings back to /internal/images/{id}/analysis. This key proves the
