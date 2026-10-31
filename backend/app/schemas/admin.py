@@ -80,8 +80,12 @@ class AdminReportRow(BaseModel):
     title: str
     category: str
     status: str
+    address: str = ""  # street and area, as the reporter confirmed it
+    landmark: str = ""
     city: str
+    district: str = ""
     state: str
+    pincode: str = ""
     latitude: float
     longitude: float
     created_at: datetime | None = None

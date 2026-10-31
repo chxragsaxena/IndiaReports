@@ -526,3 +526,11 @@ async def test_staff_cannot_say_me_too(client):
     r = await client.post(f"/api/v1/reports/{report['id']}/support", headers=bearer(asha))
     assert r.status_code == 403
     assert (await client.get(f"/api/v1/reports/{report['id']}")).json()["affected_count"] == 1
+
+
+async def test_the_queue_rows_say_where_the_problem_is_not_just_the_city(client):
+    r = await client.post("/api/v1/reports/", json=sample_report(address="Balraj Khanna Marg, West Patel Nagar", landmark="near the metro", pincode="110008"))
+    assert r.status_code == 201
+    (row,) = (await client.get("/api/v1/admin/reports", headers=ADMIN)).json()["items"]
+    assert row["address"] == "Balraj Khanna Marg, West Patel Nagar" and row["landmark"] == "near the metro"
+    assert row["pincode"] == "110008" and row["city"] and row["district"] is not None

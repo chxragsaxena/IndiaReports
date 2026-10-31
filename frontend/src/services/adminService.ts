@@ -13,8 +13,12 @@ export interface AdminReport {
     title: string;
     category: string;
     status: ReportStatus;
+    address: string;
+    landmark: string;
     city: string;
+    district: string;
     state: string;
+    pincode: string;
     latitude: number;
     longitude: number;
     created_at: string | null;

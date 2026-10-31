@@ -268,6 +268,7 @@ async def list_reports_for_admin(
         items.append(
             AdminReportRow(
                 id=r.id, title=r.title, category=r.category, status=r.status, city=r.city, state=r.state,
+                address=r.address, landmark=r.landmark, district=r.district, pincode=r.pincode,
                 latitude=r.latitude, longitude=r.longitude,
                 created_at=r.created_at, assigned_at=r.assigned_at, acknowledged_at=r.acknowledged_at,
                 escalated_at=r.escalated_at, resolved_at=r.resolved_at, archived_at=r.archived_at,

@@ -251,3 +251,10 @@
     display: inline-flex;
     gap: 6px;
 }
+
+.place {
+    display: block;
+    font-weight: 600;
+    color: var(--text);
+    max-width: 260px;
+}

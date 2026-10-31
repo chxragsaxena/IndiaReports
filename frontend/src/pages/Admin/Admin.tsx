@@ -296,7 +296,14 @@ function Admin() {
                                                 ) : null}
                                             </span>
                                         </th>
-                                        <td>{[r.city, r.state].filter(Boolean).join(", ")}</td>
+                                        <td>
+                                            <span className={styles.place}>{r.address || r.landmark || r.city}</span>
+                                            {r.address && r.landmark && <span className={styles.subline}>Near {r.landmark}</span>}
+                                            <span className={styles.subline}>
+                                                {[r.city, r.state].filter(Boolean).join(", ")}
+                                                {r.pincode ? ` ${r.pincode}` : ""}
+                                            </span>
+                                        </td>
                                         {isMain && (
                                             <td>
                                                 {r.assignee_name ?? <span className={styles.muted}>Nobody</span>}
