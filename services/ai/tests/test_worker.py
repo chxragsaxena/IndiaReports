@@ -361,3 +361,25 @@ async def test_the_daily_transcription_cap_is_respected(redis, monkeypatch):
     transcriber, reporter = FakeTranscriber(), FakeReporter()
     await run_voice(redis, transcriber, reporter)
     assert transcriber.calls == 0 and reporter.sent[0][1]["status"] == "failed"
+
+
+async def test_the_worker_makes_its_group_again_when_redis_loses_it(redis, monkeypatch):
+    """A Redis restart without its data (or a flush) deletes the stream and the group. Without this the worker
+    would fail forever with NOGROUP; with it, work published afterwards is still done."""
+    import asyncio
+
+    await redis.delete(settings.EVENT_STREAM)  # the stream and its consumer group are gone
+    reporter, stop = FakeReporter(), asyncio.Event()
+    task = asyncio.create_task(worker.run_worker(stop, redis, FakeAnalyzer(), FakeStore(), reporter))
+    try:
+        await asyncio.sleep(0.5)  # the first read fails with NOGROUP
+        await publish(redis)
+        for _ in range(100):  # waits out the worker's short pause, then the group is created and the event handled
+            if reporter.sent:
+                break
+            await asyncio.sleep(0.1)
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, timeout=10)
+    (image_id, body), = reporter.sent
+    assert image_id == IMAGE and body["status"] == "done"

@@ -98,6 +98,15 @@ func (c *Consumer) Run(ctx context.Context) {
 				continue
 			}
 			c.log.Warn("group read failed", "err", err)
+			if strings.Contains(fmt.Sprint(err), "NOGROUP") {
+				// Redis lost the stream or the group (it restarted without its data, or was flushed). Make it again, or this service
+				// would fail forever. Events published while it was gone are lost, but the reports themselves stay in Postgres.
+				if e := c.rdb.XGroupCreateMkStream(ctx, c.cfg.Stream, c.cfg.Group, "0").Err(); e != nil && !strings.Contains(fmt.Sprint(e), "BUSYGROUP") {
+					c.log.Warn("cannot recreate consumer group", "err", e)
+				} else {
+					c.log.Info("consumer group recreated")
+				}
+			}
 			sleepCtx(ctx, backoff)
 			backoff = min(backoff*2, 15*time.Second)
 			continue
@@ -112,6 +121,14 @@ func (c *Consumer) Run(ctx context.Context) {
 }
 
 func (c *Consumer) process(ctx context.Context, msg redis.XMessage) {
+	// The stream carries every kind of event, including work requests meant for the AI service. Analytics only counts
+	// these two; the rest are not its business, so acknowledge them quietly instead of treating them as broken.
+	if typ, _ := msg.Values["type"].(string); typ != "ReportCreated" && typ != "ReportStatusChanged" {
+		if err := c.rdb.XAck(ctx, c.cfg.Stream, c.cfg.Group, msg.ID).Err(); err != nil {
+			c.log.Warn("ack failed", "id", msg.ID, "err", err)
+		}
+		return
+	}
 	ev, err := parse(msg)
 	if err != nil {
 		c.log.Error("unparseable event, dead-lettering", "err", err)

@@ -226,8 +226,12 @@ async def run_worker(
                 await ensure_group(redis)
                 ready = True
             await process_once(redis, analyzer, store, reporter, triager=triager, verifier=verifier, transcriber=transcriber)
-        except Exception:
+        except Exception as e:
             logger.warning("worker loop error, retrying", exc_info=True)
+            if "NOGROUP" in str(e):
+                # Redis lost the stream or the group (a restart without its data, or a flush): make the group again
+                # on the next pass, or this worker would fail forever.
+                ready = False
             try:
                 await asyncio.wait_for(stop.wait(), timeout=3.0)
             except asyncio.TimeoutError:

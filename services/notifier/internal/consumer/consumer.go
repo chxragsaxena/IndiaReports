@@ -126,6 +126,15 @@ func (c *Consumer) RunGroup(ctx context.Context) {
 				continue
 			}
 			c.log.Warn("group read failed", "err", err)
+			if strings.Contains(fmt.Sprint(err), "NOGROUP") {
+				// Redis lost the stream or the group (it restarted without its data, or was flushed). Make it again, or this notifier
+				// would fail forever. Events published while it was gone are lost, but the reports themselves stay in Postgres.
+				if e := c.rdb.XGroupCreateMkStream(ctx, c.cfg.Stream, c.cfg.Group, "0").Err(); e != nil && !strings.Contains(fmt.Sprint(e), "BUSYGROUP") {
+					c.log.Warn("cannot recreate consumer group", "err", e)
+				} else {
+					c.log.Info("consumer group recreated")
+				}
+			}
 			sleepCtx(ctx, backoff)
 			backoff = min(backoff*2, 15*time.Second)
 			continue
