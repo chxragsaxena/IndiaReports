@@ -53,6 +53,12 @@ def sample_report(**overrides):
     return data
 
 
+async def verify_all_emails() -> None:
+    """Mark every account's address as confirmed (a citizen normally clicks the emailed link)."""
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE users SET email_verified_at = now() WHERE email_verified_at IS NULL"))
+
+
 @pytest.fixture(autouse=True)
 def photo_store():
     """Every test gets a private in-memory photo store; no object storage needed."""

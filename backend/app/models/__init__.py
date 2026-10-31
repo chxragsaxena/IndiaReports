@@ -1,4 +1,5 @@
 from app.models.area import Area, Officer
+from app.models.auth_token import AuthToken
 from app.models.email import EmailJob
 from app.models.image import ReportImage
 from app.models.outbox import OutboxEvent
@@ -8,5 +9,5 @@ from app.models.voice import ReportVoiceNote
 
 __all__ = [
     "Report", "ReportSupporter", "OutboxEvent", "Area", "Officer", "User", "ReportImage", "EmailJob",
-    "ReportVoiceNote",
+    "ReportVoiceNote", "AuthToken",
 ]

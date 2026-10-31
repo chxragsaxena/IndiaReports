@@ -11,6 +11,8 @@ export interface AuthUser {
     name: string;
     email: string;
     role: Role;
+    /** False until they click the link emailed to them. Report emails are only sent once it is true. */
+    email_verified?: boolean;
 }
 
 export interface Session {

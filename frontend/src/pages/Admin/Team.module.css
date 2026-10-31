@@ -109,3 +109,14 @@
     justify-content: flex-end;
     gap: 8px;
 }
+
+.inactive {
+    opacity: 0.6;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    align-items: center;
+}

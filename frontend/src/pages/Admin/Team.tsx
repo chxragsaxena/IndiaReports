@@ -7,7 +7,16 @@ import { SelectField, TextArea, TextField } from "../../components/UI/Input/Inpu
 import Skeleton from "../../components/UI/Skeleton/Skeleton";
 import { useToast } from "../../components/UI/Toast/Toast";
 import Modal from "../../components/UI/Modal/Modal";
-import { createArea, createOfficer, listAreas, listOfficers, setOfficerAccount } from "../../services/adminService";
+import {
+    createArea,
+    createOfficer,
+    deactivateOfficer,
+    listAreas,
+    listOfficers,
+    reactivateOfficer,
+    sendOfficerReset,
+    setOfficerAccount,
+} from "../../services/adminService";
 import type { Area, Officer } from "../../services/adminService";
 import { apiErrorMessage } from "../../services/reportService";
 import styles from "./Team.module.css";
@@ -140,6 +149,38 @@ function Team() {
         }
     }
 
+    // ---- deactivate, reactivate, send a password reset link
+    const [working, setWorking] = useState<string | null>(null);
+
+    async function act(officer: Officer, what: "deactivate" | "reactivate" | "reset") {
+        if (
+            what === "deactivate" &&
+            !window.confirm(
+                `Deactivate ${officer.name}? They can no longer sign in, and their open reports move to you. You can reactivate them later.`,
+            )
+        ) {
+            return;
+        }
+        setWorking(officer.id);
+        try {
+            if (what === "deactivate") {
+                const done = await deactivateOfficer(officer.id);
+                toast.show(`${officer.name} is deactivated. ${done.reassigned} open report${done.reassigned === 1 ? "" : "s"} moved to you.`, "success");
+            } else if (what === "reactivate") {
+                await reactivateOfficer(officer.id);
+                toast.show(`${officer.name} can sign in again and will get new reports for their area.`, "success");
+            } else {
+                const sent = await sendOfficerReset(officer.id);
+                toast.show(`A password reset link was emailed to ${sent.sent_to}.`, "success");
+            }
+            await load();
+        } catch (err) {
+            fail(err);
+        } finally {
+            setWorking(null);
+        }
+    }
+
     const staff = officers.filter((o) => o.role === "officer");
 
     return (
@@ -169,11 +210,12 @@ function Team() {
                                     <th scope="col">Officer</th>
                                     <th scope="col">Area</th>
                                     <th scope="col">Signs in with</th>
+                                    <th scope="col">Access</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {staff.map((o) => (
-                                    <tr key={o.id}>
+                                    <tr key={o.id} className={o.active ? undefined : styles.inactive}>
                                         <th scope="row">{o.name}</th>
                                         <td>{o.area_name ?? <span className={styles.muted}>No area</span>}</td>
                                         <td>
@@ -185,6 +227,29 @@ function Team() {
                                                     </button>
                                                 </>
                                             )}
+                                        </td>
+                                        <td>
+                                            <span className={styles.actions}>
+                                                {o.active ? (
+                                                    <>
+                                                        {o.email && (
+                                                            <button className={styles.linkBtn} disabled={working === o.id} onClick={() => void act(o, "reset")}>
+                                                                Send reset link
+                                                            </button>
+                                                        )}
+                                                        <button className={styles.linkBtn} disabled={working === o.id} onClick={() => void act(o, "deactivate")}>
+                                                            Deactivate
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className={styles.muted}>Deactivated</span>
+                                                        <button className={styles.linkBtn} disabled={working === o.id} onClick={() => void act(o, "reactivate")}>
+                                                            Reactivate
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </span>
                                         </td>
                                     </tr>
                                 ))}

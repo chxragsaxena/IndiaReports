@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext";
 import Button from "../../components/UI/Button/Button";
@@ -144,6 +144,11 @@ function Login() {
                     <Button type="submit" loading={busy}>
                         {signingUp ? "Create account" : "Sign in"}
                     </Button>
+                    {!signingUp && (
+                        <p className={styles.switch}>
+                            <Link to="/forgot-password">Forgot your password?</Link>
+                        </p>
+                    )}
                 </form>
 
                 {portal === "citizen" ? (

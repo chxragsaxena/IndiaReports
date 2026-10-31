@@ -90,6 +90,9 @@ async def current_user_optional(
     user = await db.get(User, user_id)
     if user is None or not user.active:
         raise HTTPException(status_code=401, detail="Invalid session.")
+    # A password reset signs out every session that began before it.
+    if user.password_changed_at is not None and int(claims.get("iat", 0)) < int(user.password_changed_at.timestamp()):
+        raise HTTPException(status_code=401, detail="Your password was changed. Please sign in again.")
     return user
 
 

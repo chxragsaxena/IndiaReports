@@ -168,7 +168,8 @@ class ReportService:
             reporter = await db.get(User, report.reporter_id)
             if reporter is not None:
                 subject, body = resolved_notice(report, reporter.name)
-                await queue_email(db, reporter.email, subject, body, f"resolved:{report.id}:{stamp}")
+                # Only to an address its owner has confirmed: nobody can make us email a stranger.
+                await queue_email(db, reporter.email if reporter.email_verified_at else None, subject, body, f"resolved:{report.id}:{stamp}")
         # Everyone who said "me too" was waiting for this fix as well.
         supporters = (
             await db.execute(
@@ -177,7 +178,7 @@ class ReportService:
         ).scalars().all()
         for person in supporters:
             subject, body = resolved_notice(report, person.name)
-            await queue_email(db, person.email, subject, body, f"resolved:{report.id}:{stamp}:{person.id}")
+            await queue_email(db, person.email if person.email_verified_at else None, subject, body, f"resolved:{report.id}:{stamp}:{person.id}")
 
     @staticmethod
     async def support(db: AsyncSession, report_id: uuid.UUID, user: User) -> tuple[Report, bool]:

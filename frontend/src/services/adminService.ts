@@ -123,6 +123,24 @@ export async function createOfficer(officer: NewOfficer): Promise<Officer> {
 }
 
 /** Give an existing officer an account to sign in with (links it if the email already has one). */
+export interface OfficerDeactivated extends Officer {
+    /** Open reports handed to the main administrator. */
+    reassigned: number;
+}
+
+export async function deactivateOfficer(officerId: string): Promise<OfficerDeactivated> {
+    return (await client.post<OfficerDeactivated>(`/admin/officers/${encodeURIComponent(officerId)}/deactivate`)).data;
+}
+
+export async function reactivateOfficer(officerId: string): Promise<Officer> {
+    return (await client.post<Officer>(`/admin/officers/${encodeURIComponent(officerId)}/reactivate`)).data;
+}
+
+/** Email the officer a link to choose a new password. */
+export async function sendOfficerReset(officerId: string): Promise<{ sent_to: string }> {
+    return (await client.post<{ sent_to: string }>(`/admin/officers/${encodeURIComponent(officerId)}/send-reset`)).data;
+}
+
 export async function setOfficerAccount(officerId: string, email: string, password?: string): Promise<Officer> {
     return (
         await client.put<Officer>(`/admin/officers/${encodeURIComponent(officerId)}/account`, {

@@ -3,14 +3,16 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.alerts import analysis_enabled
 from app.core.auth import hash_password
 from app.core.config import settings
+from app.core.mailer import email_enabled
 from app.core.storage import get_store
+from app.core.tokens import RESET_TTL, issue
 from app.models.image import ReportImage
 from app.models.voice import ReportVoiceNote
 from app.schemas.image import AdminImage, AdminReportDetail, AdminVoiceNote
@@ -20,6 +22,9 @@ from app.models.area import Area, Officer
 from app.models.report import Report
 from app.models.user import User
 from app.schemas.auth import AdminUserCreate, UserResponse
+from app.schemas.admin import OfficerDeactivated
+from app.services.assignment_service import get_admin
+from app.services.email_service import queue_email, reset_notice
 from app.schemas.admin import (
     AdminReportPage,
     AdminReportRow,
@@ -144,7 +149,10 @@ async def _account_for(
     if user is None:
         if not password:
             raise HTTPException(422, "a password is required to create a new account for this email.")
-        user = User(email=email, name=name.strip(), password_hash=await hash_password(password), role=wanted_role)
+        user = User(
+            email=email, name=name.strip(), password_hash=await hash_password(password), role=wanted_role,
+            email_verified_at=datetime.now(timezone.utc),  # the main administrator vouches for staff addresses
+        )
         db.add(user)
         await db.flush()
         return user
@@ -177,6 +185,70 @@ async def set_officer_account(officer_id: UUID, body: OfficerAccount, db: AsyncS
         raise HTTPException(409, "that account is already linked to another officer.")
     area = await db.get(Area, officer.area_id) if officer.area_id else None
     return _officer_response(officer, user.email, area.name if area else None)
+
+
+async def _officer_with_account(db: AsyncSession, officer_id: UUID) -> tuple[Officer, User | None]:
+    officer = await db.get(Officer, officer_id)
+    if officer is None:
+        raise HTTPException(404, "officer not found.")
+    user = await db.get(User, officer.user_id) if officer.user_id else None
+    return officer, user
+
+
+@router.post("/officers/{officer_id}/deactivate", response_model=OfficerDeactivated, dependencies=main_only)
+async def deactivate_officer(officer_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Stop an officer signing in (they leave, or an account is compromised). Their unresolved
+    reports move to the main administrator at once, so nothing waits on someone who is not there.
+    Resolved reports keep their history."""
+    officer, user = await _officer_with_account(db, officer_id)
+    if officer.role == "admin":
+        raise HTTPException(409, "the main administrator cannot be deactivated.")
+    admin = await get_admin(db)
+    if admin is None:
+        raise HTTPException(409, "there is no active main administrator to take over their reports.")
+
+    officer.active = False
+    if user is not None:
+        user.active = False
+    moved = await db.execute(
+        update(Report)
+        .where(Report.assigned_officer_id == officer.id, Report.status != "RESOLVED")
+        .values(assigned_officer_id=admin.id, assigned_at=datetime.now(timezone.utc), acknowledged_at=None)
+    )
+    await db.commit()
+    area = await db.get(Area, officer.area_id) if officer.area_id else None
+    base = _officer_response(officer, user.email if user else None, area.name if area else None)
+    return OfficerDeactivated(**base.model_dump(), reassigned=moved.rowcount or 0)
+
+
+@router.post("/officers/{officer_id}/reactivate", response_model=OfficerResponse, dependencies=main_only)
+async def reactivate_officer(officer_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Let a deactivated officer sign in again and receive new reports. Reports already handed to
+    the main administrator stay with them."""
+    officer, user = await _officer_with_account(db, officer_id)
+    officer.active = True
+    if user is not None:
+        user.active = True
+    await db.commit()
+    area = await db.get(Area, officer.area_id) if officer.area_id else None
+    return _officer_response(officer, user.email if user else None, area.name if area else None)
+
+
+@router.post("/officers/{officer_id}/send-reset", dependencies=main_only)
+async def send_officer_reset(officer_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Email an officer a link to choose a new password (they forgot it, or you suspect it leaked)."""
+    _, user = await _officer_with_account(db, officer_id)
+    if user is None:
+        raise HTTPException(409, "this officer has no sign-in account.")
+    if not user.active:
+        raise HTTPException(409, "this account is deactivated.")
+    if not email_enabled():
+        raise HTTPException(409, "email is not set up on this server, so no link can be sent.")
+    secret, token_id = await issue(db, user, "reset", RESET_TTL)
+    subject, text = reset_notice(user.name, secret)
+    await queue_email(db, user.email, subject, text, f"reset:{token_id}")
+    await db.commit()
+    return {"ok": True, "sent_to": user.email}
 
 
 def _officer_response(officer: Officer, email: str | None, area_name: str | None) -> OfficerResponse:
@@ -289,7 +361,10 @@ async def create_user(body: AdminUserCreate, db: AsyncSession = Depends(get_db))
     email = body.email.lower()
     if (await db.execute(select(User.id).where(User.email == email))).first():
         raise HTTPException(409, "An account with this email already exists.")
-    user = User(email=email, name=body.name.strip(), password_hash=await hash_password(body.password), role=body.role)
+    user = User(
+        email=email, name=body.name.strip(), password_hash=await hash_password(body.password), role=body.role,
+        email_verified_at=datetime.now(timezone.utc),
+    )
     db.add(user)
     try:
         await db.commit()

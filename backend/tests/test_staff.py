@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.db.session import engine
 from app.events.lifecycle import archive_once
 from app.events.rollup import rollup_once
-from tests.conftest import sample_report
+from tests.conftest import sample_report, verify_all_emails
 from tests.test_assignment import ADMIN, MUMBAI, events, make_area, square
 from tests.test_auth import PASSWORD, bearer, register
 
@@ -157,6 +157,7 @@ async def test_resolving_records_who_and_why_and_emails_the_citizen(client):
     asha, _ = await two_cities(client)
     citizen = (await register(client, email="citizen@x.example", name="Chirag"))["access_token"]
     report = await citizen_report(client, citizen)
+    await verify_all_emails()  # report emails only go to confirmed addresses
 
     r = await client.patch(
         f"/api/v1/reports/{report['id']}/status",
@@ -171,7 +172,7 @@ async def test_resolving_records_who_and_why_and_emails_the_citizen(client):
         by = (await conn.execute(text("SELECT u.email FROM reports r JOIN users u ON u.id = r.resolved_by"))).scalar_one()
     assert by == "asha@city.example"
 
-    mails = [m for m in await queued_emails() if m.to_email == "citizen@x.example"]
+    mails = [m for m in await queued_emails() if m.to_email == "citizen@x.example" and m.subject.startswith("Resolved")]
     assert len(mails) == 1
     assert mails[0].subject == "Resolved: Large pothole"
     assert "Filled with asphalt on Tuesday." in mails[0].body
@@ -181,7 +182,7 @@ async def test_resolving_records_who_and_why_and_emails_the_citizen(client):
     # Saying it again changes nothing and sends nothing more.
     again = await client.patch(f"/api/v1/reports/{report['id']}/status", json={"status": "RESOLVED"}, headers=bearer(asha))
     assert again.status_code == 200
-    assert len([m for m in await queued_emails() if m.to_email == "citizen@x.example"]) == 1
+    assert len([m for m in await queued_emails() if m.to_email == "citizen@x.example" and m.subject.startswith("Resolved")]) == 1
 
 
 async def test_an_anonymous_report_resolves_without_an_email(client):
@@ -206,7 +207,7 @@ async def test_the_officer_is_emailed_when_a_report_lands_in_their_area(client):
     await two_cities(client)
     citizen = (await register(client, email="citizen@x.example"))["access_token"]
     await citizen_report(client, citizen)
-    mails = await queued_emails()
+    mails = [m for m in await queued_emails() if not m.subject.startswith("Confirm")]  # the sign-up confirmation is not this email
     assert [m.to_email for m in mails] == ["asha@city.example"]
     assert "New report in your area" in mails[0].subject and "7 days" in mails[0].body
 

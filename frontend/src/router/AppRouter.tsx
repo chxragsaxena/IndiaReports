@@ -15,6 +15,9 @@ const Acknowledge = lazy(() => import("../pages/Acknowledge/Acknowledge"));
 const Admin = lazy(() => import("../pages/Admin/Admin"));
 const Team = lazy(() => import("../pages/Admin/Team"));
 const Login = lazy(() => import("../pages/Login/Login"));
+const ForgotPassword = lazy(() => import("../pages/Account/ForgotPassword"));
+const ResetPassword = lazy(() => import("../pages/Account/ResetPassword"));
+const VerifyEmail = lazy(() => import("../pages/Account/VerifyEmail"));
 const MyReports = lazy(() => import("../pages/MyReports/MyReports"));
 const NotFound = lazy(() => import("../pages/NotFound/NotFound"));
 
@@ -36,6 +39,9 @@ function AppRouter() {
                         {/* Anyone: the public map, the sign-in page and the officer acknowledge link */}
                         <Route path="/" element={<Home />} />
                         <Route path="/login" element={<Login />} />
+                        <Route path="/forgot-password" element={<ForgotPassword />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
+                        <Route path="/verify-email" element={<VerifyEmail />} />
                         <Route path="/ack" element={<Acknowledge />} />
                         <Route path="/scorecards" element={<Scorecards />} />
 

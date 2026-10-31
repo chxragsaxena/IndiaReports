@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.db.session import engine
 from app.services.similarity import text_match, words
-from tests.conftest import sample_report
+from tests.conftest import sample_report, verify_all_emails
 
 API_KEY = {"X-API-Key": os.environ["ADMIN_API_KEY"]}
 PASSWORD = "correct horse battery"
@@ -129,6 +129,7 @@ async def test_people_who_said_me_too_are_emailed_when_it_is_fixed(client):
     fan = await citizen(client, "fan@example.org")
     report_id = await file_report(client, owner)
     await client.post(f"/api/v1/reports/{report_id}/support", headers=bearer(fan))
+    await verify_all_emails()  # report emails only go to confirmed addresses
     r = await client.patch(
         f"/api/v1/reports/{report_id}/status", json={"status": "RESOLVED", "note": "Patched."}, headers=API_KEY
     )

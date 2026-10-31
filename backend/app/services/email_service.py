@@ -95,3 +95,28 @@ def escalated_notice(report: Report, admin_name: str, previous: str, since: date
         + (f"\nOpen the queue: {link}\n" if link else "")
         + "\nIndiaReports",
     )
+
+
+def reset_notice(name: str, secret: str) -> tuple[str, str]:
+    link = _link(f"/reset-password?token={secret}")
+    return (
+        "Reset your IndiaReports password",
+        f"Hello {name},\n\n"
+        "Someone asked to reset the password for this account. If that was you, open this link within one hour "
+        "and choose a new password:\n\n"
+        f"{link or '(the site address is not configured, ask the administrator)'}\n\n"
+        "The link works once. If you did not ask for this, ignore this email: your password has not changed.\n\n"
+        "IndiaReports",
+    )
+
+
+def verify_notice(name: str, secret: str) -> tuple[str, str]:
+    link = _link(f"/verify-email?token={secret}")
+    return (
+        "Confirm your email for IndiaReports",
+        f"Hello {name},\n\n"
+        "Confirm this email address so we can tell you when the problems you report are resolved:\n\n"
+        f"{link or '(the site address is not configured, ask the administrator)'}\n\n"
+        "The link works for 2 days. If you did not create an account, ignore this email.\n\n"
+        "IndiaReports",
+    )

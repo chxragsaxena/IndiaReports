@@ -59,6 +59,10 @@ class OfficerResponse(BaseModel):
     active: bool
 
 
+class OfficerDeactivated(OfficerResponse):
+    reassigned: int = 0  # open reports handed to the main administrator
+
+
 class StaffProfile(BaseModel):
     """Who the signed-in staff member is, so the page can show their scope."""
 

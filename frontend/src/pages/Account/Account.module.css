@@ -1,0 +1,46 @@
+.page {
+    min-height: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 48px 16px;
+}
+
+.card {
+    width: min(100%, 440px);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 28px;
+}
+
+.card h1 {
+    font-size: 1.4rem;
+}
+
+.sub {
+    color: var(--text-2);
+    font-size: 0.92rem;
+}
+
+.error {
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+
+.ok {
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-size: 0.92rem;
+}
+
+.back {
+    font-size: 0.88rem;
+}
