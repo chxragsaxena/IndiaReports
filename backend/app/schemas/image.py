@@ -26,6 +26,22 @@ class AdminImage(BaseModel):
     analyzed_at: datetime | None = None
 
 
+class VoiceUploadResponse(BaseModel):
+    id: UUID
+
+
+class AdminVoiceNote(BaseModel):
+    id: UUID
+    url: str  # short-lived link to the recording
+    duration_seconds: int | None = None
+    status: str  # pending | done | failed
+    transcript: str | None = None
+    language: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    error: str | None = None
+
+
 class AdminReportDetail(BaseModel):
     id: UUID
     title: str
@@ -48,6 +64,7 @@ class AdminReportDetail(BaseModel):
     resolution_note: str | None = None
     assignee_name: str | None = None
     images: list[AdminImage]
+    voice_notes: list[AdminVoiceNote] = []
     analysis_enabled: bool
     triage: dict | None = None  # what the ai-service made of the text; staff only
     affected_count: int = 1

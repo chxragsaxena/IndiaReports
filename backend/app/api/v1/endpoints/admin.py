@@ -12,7 +12,8 @@ from app.core.auth import hash_password
 from app.core.config import settings
 from app.core.storage import get_store
 from app.models.image import ReportImage
-from app.schemas.image import AdminImage, AdminReportDetail
+from app.models.voice import ReportVoiceNote
+from app.schemas.image import AdminImage, AdminReportDetail, AdminVoiceNote
 from app.core.security import Staff, require_admin, require_staff
 from app.db.session import get_db
 from app.models.area import Area, Officer
@@ -311,6 +312,11 @@ async def report_detail(
     images = (
         await db.execute(select(ReportImage).where(ReportImage.report_id == report_id).order_by(ReportImage.created_at))
     ).scalars().all()
+    voice_notes = (
+        await db.execute(
+            select(ReportVoiceNote).where(ReportVoiceNote.report_id == report_id).order_by(ReportVoiceNote.created_at)
+        )
+    ).scalars().all()
     store = get_store()
     assignee = await db.get(Officer, report.assigned_officer_id) if report.assigned_officer_id else None
 
@@ -336,6 +342,15 @@ async def report_detail(
                 provider=i.analysis_provider, model=i.analysis_model, error=i.error, analyzed_at=i.analyzed_at,
             )
             for i in images
+        ],
+        voice_notes=[
+            AdminVoiceNote(
+                id=v.id,
+                url=await store.presign_get(v.storage_key, settings.IMAGE_URL_TTL_SECONDS) if store else "",
+                duration_seconds=v.duration_seconds, status=v.status, transcript=v.transcript,
+                language=v.language, provider=v.provider, model=v.model, error=v.error,
+            )
+            for v in voice_notes
         ],
     )
 

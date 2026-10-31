@@ -189,6 +189,18 @@ export interface AdminImage {
     analyzed_at: string | null;
 }
 
+export interface AdminVoiceNote {
+    id: string;
+    url: string;
+    duration_seconds: number | null;
+    status: "pending" | "done" | "failed";
+    transcript: string | null;
+    language: string | null;
+    provider: string | null;
+    model: string | null;
+    error: string | null;
+}
+
 export interface AdminReportDetail {
     id: string;
     title: string;
@@ -211,6 +223,7 @@ export interface AdminReportDetail {
     resolution_note: string | null;
     assignee_name: string | null;
     images: AdminImage[];
+    voice_notes: AdminVoiceNote[];
     analysis_enabled: boolean;
     triage: Triage | null;
     affected_count: number;

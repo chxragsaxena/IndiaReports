@@ -162,7 +162,9 @@ function AdminReportDetail({ reportId, onClose, onShowOnMap }: Props) {
                 .then((d) => {
                     setDetail(d);
                     setFailed(false);
-                    const unfinished = d.images.some((i) => i.status === "pending" || i.status === "analyzing");
+                    const unfinished =
+                        d.images.some((i) => i.status === "pending" || i.status === "analyzing") ||
+                        d.voice_notes.some((v) => v.status === "pending");
                     if (unfinished && d.analysis_enabled) timer = window.setTimeout(load, 5000);
                 })
                 .catch((err) => {
@@ -262,6 +264,29 @@ function AdminReportDetail({ reportId, onClose, onShowOnMap }: Props) {
                                 : ""}
                     </p>
                     {detail.resolution_note && <p className={styles.description}>&ldquo;{detail.resolution_note}&rdquo;</p>}
+
+                    {detail.voice_notes.length > 0 && (
+                        <>
+                            <h3>Voice note</h3>
+                            {detail.voice_notes.map((v) => (
+                                <div key={v.id} className={styles.voice}>
+                                    <audio controls src={v.url} preload="none" />
+                                    {v.status === "done" && v.transcript && (
+                                        <p className={styles.description}>
+                                            {v.transcript}
+                                            <span className={styles.muted}>
+                                                {" "}
+                                                Transcribed{v.language ? ` from ${v.language}` : ""}. The transcript may contain mistakes; play the recording if it matters.
+                                            </span>
+                                        </p>
+                                    )}
+                                    {v.status === "pending" && <p className={styles.muted}>Transcribing...</p>}
+                                    {v.status === "failed" && <p className={styles.warn}>Could not be transcribed: {v.error ?? "unknown error"}.</p>}
+                                    {v.provider === "mock" && <p className={styles.demo}>Demo output: no speech model is configured.</p>}
+                                </div>
+                            ))}
+                        </>
+                    )}
 
                     <h3>Photos ({detail.images.filter((i) => i.kind === "report").length})</h3>
 

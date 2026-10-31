@@ -5,7 +5,11 @@ import { Link } from "react-router-dom";
 import Button from "../../components/UI/Button/Button";
 import { SelectField, TextArea, TextField } from "../../components/UI/Input/Input";
 import { useToast } from "../../components/UI/Toast/Toast";
-import { PhotosUnavailableError, apiErrorMessage, createReport, uploadReportPhoto } from "../../services/reportService";
+import { useAuth } from "../../auth/AuthContext";
+import VoiceRecorder from "../../components/VoiceRecorder/VoiceRecorder";
+import type { Recording } from "../../components/VoiceRecorder/VoiceRecorder";
+import { PhotosUnavailableError, VoiceUnavailableError, apiErrorMessage, createReport, uploadReportPhoto, uploadVoiceNote } from "../../services/reportService";
+import { VOICE_PLACEHOLDER } from "../../utils/voice";
 import { MAX_PHOTOS, compressPhoto, photoProblem } from "../../utils/image";
 import { CATEGORIES } from "../../types/report";
 import type { Report } from "../../types/report";
@@ -47,10 +51,10 @@ const EMPTY: FormState = {
 // Address fields that reverse geocoding may fill in (unless the person typed them).
 const PLACE_FIELDS = ["address", "city", "district", "state", "pincode"] as const;
 
-function validate(f: FormState): Errors {
+function validate(f: FormState, hasVoice: boolean): Errors {
     const e: Errors = {};
     if (f.title.trim().length < 3) e.title = "Give the issue a short title (at least 3 characters).";
-    if (f.description.trim().length < 10) e.description = "Describe the problem in a sentence or two (at least 10 characters).";
+    if (f.description.trim().length < 10 && !hasVoice) e.description = "Describe the problem in a sentence or two (at least 10 characters), or record a voice note.";
     if (!f.category) e.category = "Choose the category that fits best.";
     if (f.latitude === null || f.longitude === null) e.latitude = "Tap the map to mark where the problem is.";
     if (!f.city.trim()) e.city = "Enter the city or town.";
@@ -61,6 +65,9 @@ function validate(f: FormState): Errors {
 
 function ReportPage() {
     const toast = useToast();
+    const { user } = useAuth();
+    const [voice, setVoice] = useState<Recording | null>(null);
+    const [voiceSent, setVoiceSent] = useState(false);
     const [form, setForm] = useState<FormState>(EMPTY);
     const [errors, setErrors] = useState<Errors>({});
     const [submitting, setSubmitting] = useState(false);
@@ -138,7 +145,7 @@ function ReportPage() {
 
     async function submit(e: FormEvent) {
         e.preventDefault();
-        const found = validate(form);
+        const found = validate(form, voice !== null);
         setErrors(found);
         if (Object.keys(found).length > 0) {
             toast.show("Please fix the highlighted fields.", "error");
@@ -154,7 +161,7 @@ function ReportPage() {
         try {
             const report = await createReport({
                 title: form.title.trim(),
-                description: form.description.trim(),
+                description: form.description.trim() || VOICE_PLACEHOLDER,
                 category: form.category,
                 latitude: form.latitude!,
                 longitude: form.longitude!,
@@ -183,6 +190,22 @@ function ReportPage() {
                 }
             }
             if (failed > 0 && attached > 0) toast.show(`${failed} photo${failed === 1 ? "" : "s"} could not be uploaded.`, "error");
+            let sentVoice = false;
+            if (voice) {
+                setUploadNote("Uploading your voice note...");
+                try {
+                    await uploadVoiceNote(report.id, voice.blob, voice.seconds);
+                    sentVoice = true;
+                } catch (err) {
+                    toast.show(
+                        err instanceof VoiceUnavailableError
+                            ? "Voice notes cannot be uploaded right now, but your report was submitted."
+                            : "Your report was submitted, but the voice note could not be uploaded.",
+                        "error",
+                    );
+                }
+            }
+            setVoiceSent(sentVoice);
             setPhotoCount(attached);
             setSubmitted(report);
         } catch (err) {
@@ -205,6 +228,7 @@ function ReportPage() {
                             ? `It has been sent to the officer responsible for this area${photoCount > 0 ? `, with ${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""}. If nobody acknowledges it, it is escalated to the administrator automatically.`
                             : "It is now on the map for everyone to see."}
                     </p>
+                    {voiceSent && <p>Your voice note is being transcribed for the officer.</p>}
                     <div className={styles.doneActions}>
                         <Link
                             className={styles.primaryLink}
@@ -217,6 +241,8 @@ function ReportPage() {
                             onClick={() => {
                                 touched.current.clear();
                                 setPhotos([]);
+                                setVoice(null);
+                                setVoiceSent(false);
                                 setUploadNote("");
                                 setForm(EMPTY);
                                 setSubmitted(null);
@@ -271,6 +297,19 @@ function ReportPage() {
                         maxLength={5000}
                         placeholder="What happened, how long it has been like this, and who it affects."
                     />
+                    {user ? (
+                        <>
+                            <VoiceRecorder value={voice} onChange={setVoice} onProblem={(m) => toast.show(m, "error")} />
+                            <p className={styles.photoHelp}>
+                                Prefer to speak? Record up to a minute in any Indian language. It is converted to text for the officer, and
+                                only staff can hear it.
+                            </p>
+                        </>
+                    ) : (
+                        <p className={styles.photoHelp}>
+                            <Link to="/login">Sign in</Link> to add a voice note.
+                        </p>
+                    )}
                 </fieldset>
 
                 <SimilarNearby

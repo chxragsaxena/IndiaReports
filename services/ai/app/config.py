@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # The model that compares a before and an after photo. Empty uses ANALYSIS_MODEL.
     VERIFY_MODEL: str = ""
     VERIFY_MAX_PER_DAY: int = 1000
+    # ---- Speech model (voice notes) ----------------------------------------------------
+    # Whisper through an OpenAI-compatible /audio/transcriptions endpoint. With a Groq key it uses Groq;
+    # set TRANSCRIBE_BASE_URL to use your own server (faster-whisper-server, vLLM...) instead.
+    TRANSCRIBE_BASE_URL: str | None = None
+    TRANSCRIBE_API_KEY: str | None = None
+    TRANSCRIBE_MODEL: str = ""
+    TRANSCRIBE_MAX_PER_DAY: int = 500  # Groq's free tier allows 2,000 requests a day
     ANALYSIS_TIMEOUT_SECONDS: float = 240.0
     ANALYSIS_CONCURRENCY: int = 1
     ANALYSIS_MAX_PER_DAY: int = 2000

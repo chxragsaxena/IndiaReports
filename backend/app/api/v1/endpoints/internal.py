@@ -10,12 +10,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.alerts import SEVERITIES, needs_admin_attention
+from app.core.audio import VOICE_PLACEHOLDER
 from app.core.config import settings
 from app.db.session import get_db
 from app.events.outbox import add_event
 from app.models.image import ReportImage
 from app.models.report import Report
+from app.models.voice import ReportVoiceNote
 from app.services.assignment_service import get_admin
+
+MAX_DESCRIPTION = 5000  # the same limit a typed description has
 
 
 def require_internal_key(x_internal_key: str | None = Header(default=None)) -> None:
@@ -148,6 +152,52 @@ async def record_verification(image_id: uuid.UUID, body: VerificationResult, db:
     image.analysis_provider = body.provider
     image.analysis_model = body.model
     image.analyzed_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"ok": True}
+
+
+class TranscriptResult(BaseModel):
+    status: Literal["done", "failed"]
+    transcript: str | None = Field(default=None, max_length=20000)
+    language: str | None = Field(default=None, max_length=40)
+    provider: str | None = Field(default=None, max_length=20)
+    model: str | None = Field(default=None, max_length=80)
+    error: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/voice/{voice_id}/transcript")
+async def record_transcript(voice_id: uuid.UUID, body: TranscriptResult, db: AsyncSession = Depends(get_db)):
+    """The ai-service reports what was said in a voice note. Safe to repeat: a note that already
+    has a transcript keeps it. If the person only spoke (the description is still the placeholder),
+    the transcript becomes the description and the text is queued for triage."""
+    note = await db.get(ReportVoiceNote, voice_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="Voice note not found.")
+    if note.status == "done":
+        return {"ok": True, "ignored": True}
+
+    text = " ".join((body.transcript or "").split())[:MAX_DESCRIPTION] if body.status == "done" else ""
+    if body.status == "failed" or not text:
+        note.status = "failed"
+        note.error = (body.error or "No speech was found in the recording.")[:500]
+        await db.commit()
+        return {"ok": True}
+
+    note.status = "done"
+    note.error = None
+    note.transcript = text
+    note.language = _bounded(body.language or "", 40) or None
+    note.provider = body.provider
+    note.model = body.model
+    note.transcribed_at = datetime.now(timezone.utc)
+
+    report = await db.get(Report, note.report_id)
+    if report is not None and report.description == VOICE_PLACEHOLDER:
+        report.description = text
+        add_event(db, "ReportTriageRequested", {
+            "report_id": str(report.id), "title": report.title,
+            "description": report.description, "category": report.category,
+        })
     await db.commit()
     return {"ok": True}
 

@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     UPLOAD_RATE_LIMIT_PER_MINUTE: int = 20
     IMAGE_URL_TTL_SECONDS: int = 600
 
+    # Spoken descriptions (stored next to photos, transcribed by the ai-service).
+    MAX_VOICE_BYTES: int = 3 * 1024 * 1024
+    MAX_VOICE_SECONDS: int = 90
+    MAX_VOICE_NOTES_PER_REPORT: int = 1
+
     # ---- AI service ---------------------------------------------------------------
     # The ai-service reads uploaded photos from the event stream, analyses them with a vision
     # model and posts the findings back to /internal/images/{id}/analysis. This key proves the

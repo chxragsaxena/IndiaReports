@@ -6,6 +6,7 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI
 
 from app.analysis.analyzer import build_analyzer, resolve_provider
+from app.analysis.transcriber import build_transcriber
 from app.analysis.triage import build_triager
 from app.analysis.verifier import build_verifier
 from app.config import settings
@@ -23,16 +24,18 @@ async def lifespan(app: FastAPI):
     tasks: list[asyncio.Task] = []
     redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True) if settings.REDIS_URL else None
     analyzer, store, triager, verifier = build_analyzer(), build_store(), build_triager(), build_verifier()
+    transcriber = build_transcriber()
     app.state.redis, app.state.analyzer, app.state.triager, app.state.verifier = redis, analyzer, triager, verifier
+    app.state.transcriber = transcriber
 
     if redis is None:
         logger.warning("REDIS_URL is not set: no events can be received, nothing will be analysed")
-    elif analyzer is None and triager is None:
+    elif analyzer is None and triager is None and transcriber is None:
         logger.info("no model configured: photos are stored and reports are filed, but nothing is analysed")
     elif not settings.INTERNAL_API_KEY:
         logger.warning("INTERNAL_API_KEY is not set: results would be refused, nothing will be analysed")
     else:
-        tasks.append(asyncio.create_task(run_worker(stop, redis, analyzer, store, ReportServiceClient(), triager, verifier)))
+        tasks.append(asyncio.create_task(run_worker(stop, redis, analyzer, store, ReportServiceClient(), triager, verifier, transcriber)))
 
     yield
 
@@ -66,4 +69,5 @@ async def ready():
         "photo_analysis": {"provider": analyzer.provider, "model": analyzer.model} if analyzer else resolve_provider(),
         "text_triage": {"provider": app.state.triager.provider, "model": app.state.triager.model} if app.state.triager else "off",
         "fix_verification": {"provider": app.state.verifier.provider, "model": app.state.verifier.model} if app.state.verifier else "off",
+        "voice_transcription": {"provider": app.state.transcriber.provider, "model": app.state.transcriber.model} if app.state.transcriber else "off",
     }

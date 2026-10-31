@@ -3,17 +3,19 @@ from uuid import UUID
 
 import uuid as uuid_module
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audio import AudioRejected, clamp_duration, sniff
 from app.core.auth import current_user_optional, require_user
 from app.core.images import ImageRejected, TooLarge, process_image, read_limited
 from app.core.storage import get_store
 from app.events.outbox import add_event
 from app.models.image import ReportImage
 from app.models.report import Report
-from app.schemas.image import ImageUploadResponse
+from app.models.voice import ReportVoiceNote
+from app.schemas.image import ImageUploadResponse, VoiceUploadResponse
 from app.core.config import settings
 from app.core.rate_limit import rate_limit_staff_uploads, rate_limit_uploads, rate_limit_writes
 from app.models.user import User
@@ -319,6 +321,63 @@ async def upload_report_image(
     })
     await db.commit()
     return ImageUploadResponse(id=image_id, width=processed.width, height=processed.height)
+
+
+@router.post(
+    "/{report_id}/voice",
+    response_model=VoiceUploadResponse,
+    status_code=201,
+    dependencies=[Depends(rate_limit_uploads)],
+)
+async def upload_voice_note(
+    report_id: UUID,
+    file: UploadFile = File(...),
+    duration_seconds: Optional[int] = Form(default=None),
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attach a spoken description to a report. Only the person who filed it (or an admin) may.
+    The ai-service transcribes it (the spoken language can be any Indian language); staff read
+    the transcript and can play the recording."""
+    store = get_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="Voice notes are not available right now.")
+
+    report = await db.get(Report, report_id)
+    if report is None or (report.reporter_id != user.id and user.role != "admin"):
+        raise HTTPException(status_code=404, detail="Report not found.")
+
+    try:
+        raw = await read_limited(file, settings.MAX_VOICE_BYTES, what="recording")
+        kind = sniff(raw)
+    except TooLarge as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except AudioRejected as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    await db.execute(select(Report.id).where(Report.id == report_id).with_for_update())
+    existing = (
+        await db.execute(select(func.count()).select_from(ReportVoiceNote).where(ReportVoiceNote.report_id == report_id))
+    ).scalar_one()
+    if existing >= settings.MAX_VOICE_NOTES_PER_REPORT:
+        raise HTTPException(status_code=409, detail="This report already has a voice note.")
+
+    note_id = uuid_module.uuid4()
+    key = f"reports/{report_id}/voice-{note_id}.{kind.extension}"
+    await store.put(key, raw, kind.content_type)
+    db.add(
+        ReportVoiceNote(
+            id=note_id, report_id=report_id, uploader_id=user.id, storage_key=key,
+            content_type=kind.content_type, size_bytes=len(raw),
+            duration_seconds=clamp_duration(duration_seconds, settings.MAX_VOICE_SECONDS),
+        )
+    )
+    add_event(db, "VoiceNoteUploaded", {
+        "voice_id": str(note_id), "report_id": str(report_id), "storage_key": key,
+        "content_type": kind.content_type, "size_bytes": len(raw),
+    })
+    await db.commit()
+    return VoiceUploadResponse(id=note_id)
 
 
 MAX_FIX_PHOTOS = 2

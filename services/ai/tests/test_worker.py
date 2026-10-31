@@ -51,7 +51,7 @@ class FakeReporter:
             raise self.error
         self.sent.append((image_id, body))
 
-    send_triage = send_verification = send_analysis
+    send_triage = send_verification = send_transcript = send_analysis
 
 
 @pytest.fixture
@@ -287,3 +287,77 @@ async def test_a_failed_verification_is_retried_then_reported(redis, monkeypatch
     await worker.process_once(redis, None, KeyedStore(), reporter, block_ms=50, verifier=verifier)
     (_, body), = reporter.sent
     assert body["status"] == "failed" and await pending(redis) == 0
+
+
+# ---- voice notes ---------------------------------------------------------------------------
+
+VOICE = str(uuid.uuid4())
+
+
+class FakeTranscriber:
+    provider, model = "fake", "fake-whisper"
+
+    def __init__(self, error=None):
+        self.error, self.calls, self.heard = error, 0, []
+
+    async def transcribe(self, audio, content_type):
+        self.calls += 1
+        self.heard.append((audio, content_type))
+        if self.error:
+            raise self.error
+        from app.analysis.transcriber import Transcript
+
+        return Transcript(text="Sadak par gaddha hai.", language="Hindi")
+
+
+async def publish_voice(redis, **data):
+    payload = {"voice_id": VOICE, "report_id": str(uuid.uuid4()), "storage_key": "reports/x/voice-y.webm",
+               "content_type": "audio/webm", "size_bytes": 1000} | data
+    await redis.xadd(settings.EVENT_STREAM, {"event_id": "1", "type": "VoiceNoteUploaded", "data": json.dumps(payload)})
+
+
+async def run_voice(redis, transcriber, reporter, store=None):
+    return await worker.process_once(redis, None, store or FakeStore(), reporter, block_ms=50, transcriber=transcriber)
+
+
+async def test_a_voice_note_is_transcribed_and_the_text_sent(redis):
+    await publish_voice(redis)
+    transcriber, reporter = FakeTranscriber(), FakeReporter()
+    assert await run_voice(redis, transcriber, reporter) == 1
+    (voice_id, body), = reporter.sent
+    assert voice_id == VOICE and body["status"] == "done" and body["transcript"] == "Sadak par gaddha hai."
+    assert body["language"] == "Hindi" and body["provider"] == "fake" and body["model"] == "fake-whisper"
+    assert transcriber.heard == [(b"jpeg-bytes", "audio/webm")]  # the stored file, with its content type
+    assert await pending(redis) == 0
+
+
+async def test_without_a_speech_model_the_recording_just_waits(redis):
+    await publish_voice(redis)
+    reporter = FakeReporter()
+    await run_voice(redis, None, reporter)
+    assert reporter.sent == [] and await pending(redis) == 0  # acknowledged, nothing sent, nothing lost in the database
+
+
+async def test_a_voice_note_fails_for_good_on_a_permanent_error(redis):
+    await publish_voice(redis)
+    transcriber, reporter = FakeTranscriber(error=AnalysisError("bad key", retryable=False)), FakeReporter()
+    await run_voice(redis, transcriber, reporter)
+    (_, body), = reporter.sent
+    assert body["status"] == "failed" and "bad key" in body["error"] and await pending(redis) == 0
+
+
+async def test_a_voice_note_is_retried_after_a_temporary_error(redis):
+    await publish_voice(redis)
+    reporter = FakeReporter()
+    await run_voice(redis, FakeTranscriber(error=AnalysisError("busy", retryable=True)), reporter)
+    assert reporter.sent == [] and await pending(redis) == 1
+    await run_voice(redis, FakeTranscriber(), reporter)
+    assert reporter.sent[0][1]["status"] == "done" and await pending(redis) == 0
+
+
+async def test_the_daily_transcription_cap_is_respected(redis, monkeypatch):
+    monkeypatch.setattr(settings, "TRANSCRIBE_MAX_PER_DAY", 0)
+    await publish_voice(redis)
+    transcriber, reporter = FakeTranscriber(), FakeReporter()
+    await run_voice(redis, transcriber, reporter)
+    assert transcriber.calls == 0 and reporter.sent[0][1]["status"] == "failed"

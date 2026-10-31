@@ -193,6 +193,20 @@ export async function reopenReport(id: string, reason?: string): Promise<Report>
 }
 
 export class PhotosUnavailableError extends Error {}
+export class VoiceUnavailableError extends Error {}
+
+/** Attach the spoken description to a report you filed. The server transcribes it afterwards. */
+export async function uploadVoiceNote(reportId: string, recording: Blob, seconds: number): Promise<void> {
+    const form = new FormData();
+    form.append("file", recording, "voice");
+    form.append("duration_seconds", String(Math.round(seconds)));
+    try {
+        await api.post(`/reports/${encodeURIComponent(reportId)}/voice`, form, { timeout: 60000 });
+    } catch (err) {
+        if (isAxiosError(err) && err.response?.status === 503) throw new VoiceUnavailableError();
+        throw err;
+    }
+}
 
 /** Attach one photo to a report you filed. Uploads can be slow on mobile, so allow a minute. */
 export async function uploadReportPhoto(reportId: string, photo: Blob): Promise<void> {

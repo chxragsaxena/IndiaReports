@@ -96,12 +96,20 @@ a suggested action). Serious findings (high or critical severity, or inappropria
 | Photo analysis | `qwen/qwen3.8-27b` (vision) | `ANALYSIS_MODEL` |
 | Report text: language, English translation, urgency, spam | `openai/gpt-oss-20b` (small, fast) | `TRIAGE_MODEL` |
 | Before/after fix check: is the repair photo the same place with the problem gone? | the vision model (own prompt) | `VERIFY_MODEL` (empty uses `ANALYSIS_MODEL`) |
+| Voice notes: speech to text in any Indian language | `whisper-large-v3` (open-weight Whisper) | `TRANSCRIBE_MODEL`, `TRANSCRIBE_BASE_URL` |
 
 A staff member sees the translation, urgency and a possible-spam flag next to each report. The model is told to treat report text as untrusted data, and its output is bounded before it is stored.
 
 **Checking a fix.** On a report's detail panel, staff can add up to 2 *repair photos*. The vision model compares each with the reporter's original photo and says
 *looks fixed*, *partly fixed*, *not fixed* or *cannot tell*, with what is still wrong and whether it looks like the same place. It is an assistive hint for the
 supervisor, shown to staff only; it never changes a report's status by itself. If the reporter sent no photo, the repair photo is judged on its own.
+
+**Voice reports.** A signed-in citizen can record up to a minute instead of typing (any Indian language). The recording is stored like a photo (so it needs the
+same object storage), the ai-service transcribes it with Whisper, and the transcript is shown to staff next to the original recording so they can check it. If the
+person only spoke, the transcript becomes the report's description and goes through text triage like typed text; a typed description is never overwritten.
+Recordings are checked by their real bytes (webm, ogg, mp4, wav, mp3), capped at 3 MB, and are visible to staff only. Set `TRANSCRIBE_BASE_URL` to use your own
+Whisper server (faster-whisper-server, vLLM) instead of Groq, so audio stays on your infrastructure. Accuracy for each Indian language has not been measured here:
+that is what the staff-visible original recording is for.
 
 This runs in its own service, **ai-service** (`services/ai`), which reads upload events from the Redis stream and posts findings back to the report-service
 (set the same `INTERNAL_API_KEY` on both). If it is down, uploads still work and photos wait for findings.

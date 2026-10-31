@@ -72,7 +72,7 @@ class TooLarge(ImageRejected):
     """The upload exceeds the size limit."""
 
 
-async def read_limited(file, limit: int) -> bytes:
+async def read_limited(file, limit: int, what: str = "photo") -> bytes:
     """Read an upload without ever holding more than `limit` bytes in memory."""
     chunks: list[bytes] = []
     total = 0
@@ -82,5 +82,5 @@ async def read_limited(file, limit: int) -> bytes:
             return b"".join(chunks)
         total += len(chunk)
         if total > limit:
-            raise TooLarge(f"That photo is larger than {limit // (1024 * 1024)} MB. Please use a smaller one.")
+            raise TooLarge(f"That {what} is larger than {limit // (1024 * 1024)} MB. Please use a smaller one.")
         chunks.append(chunk)
